@@ -1,0 +1,31 @@
+INDICES
+- period 	t = 1, ..., s 
+- product	i = 1, ..., n
+- source 	j = 1, ..., m
+
+
+VARIABLES
+1st stage variables
+- x_i_t		production of product i at time t					(associated cost: c^1_i_t)
+- u_j_t		additional capacity of source j at time t			(associated cost: c^2_j_t)
+- z+_t-1_t	planned increase of work force from t-1 to t		(associated cost: c^3+_t-1_t)
+- z-_t-1_t	planned decrease of work force from t-1 to t		(associated cost: c^3-_t-1_t)
+
+2nd stage variables
+- y+_i_t	shortage of product i at the end of time t			(associated cost: q+_i_t)
+- y-_i_t	surplus of product i at the end of time t			(associated cost: q-_i_t)
+
+random variables
+- \xi_i_t	demand of product i at time t
+
+
+PARAMETERS
+- c^1_i_t		unit cost of x_i_t
+- c^2_j_t 		unit cost of u_j_t
+- c^3+_t-1_t	unit cost of z+_t-1_t
+- c^3-_t-1_t	unit cost of z-_t-1_t
+- q+_i_t		unit cost of y+_i_t
+- q-_i_t		unit cost of y-_i_t
+- up_j_t		upper bound on use of source j at time t
+- a_i_j			units of source j needed for one unit product i 
+- b_j_t			units of source j available at time t
