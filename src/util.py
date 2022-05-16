@@ -1,8 +1,16 @@
-from typing import Union
 import numpy as np
+from typing import Dict
 
 
-def get_parameters() -> dict[str, Union[int, np.ndarray]]:
+def get_parameters() -> Dict[str, np.ndarray]:
+    '''
+    Gets the problem constant parameters.
+
+    Returns
+    -------
+    pars :  dict[str, np.ndarray]
+        Dictionary containing the problem parameters.
+    '''
     s = 4
     return {
         # nb of periods t (t = 1,...,s)
