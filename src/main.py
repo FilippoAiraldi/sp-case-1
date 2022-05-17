@@ -7,12 +7,11 @@ import argparse
 
 def compute_EV_and_EEV(pars: Dict[str, np.ndarray], args) -> None:
     # compute the EV solution
-    EV_f, EV_sol = models.optimize_EV_solution(pars,
-                                               verbose=args.verbose,
-                                               intvars=args.intvars)
+    EV_f, EV_sol = models.optimize_EV(pars, verbose=args.verbose,
+                                      intvars=args.intvars)
 
     # print EV solution
-    util.print_title('Expected Value Problems')
+    util.print_title('Expected Value Problem')
     print(f'Opt. objective = {EV_f:.3f}')
     for var, value in EV_sol.items():
         print(f'{var} = \n', value)

@@ -53,11 +53,10 @@ def add_variables(mdl: gb.Model,
 
 
 def get_objective(
-    pars: Dict[str, np.ndarray],
-    vars: Dict[str, Union[gb.MVar, np.ndarray]],
-    stage1: bool = True,
-    stage2: bool = True
-) -> Tuple[Union[gb.LinExpr, float], Union[gb.LinExpr, float]]:
+        pars: Dict[str, np.ndarray],
+        vars: Dict[str, Union[gb.MVar, np.ndarray]],
+        stage1: bool = True,
+        stage2: bool = True) -> Tuple[Union[gb.LinExpr, float], ...]:
     '''
     Computes the objective.
 
@@ -182,10 +181,9 @@ def add_second_stage_expval_constraints(mdl: gb.Model,
             name=f'con_demand_{k}')
 
 
-def optimize_EV_solution(
-        pars: Dict[str, np.ndarray],
-        intvars: bool = False,
-        verbose: bool = False) -> Tuple[float, Dict[str, np.ndarray]]:
+def optimize_EV(pars: Dict[str, np.ndarray],
+                intvars: bool = False,
+                verbose: bool = False) -> Tuple[float, Dict[str, np.ndarray]]:
     '''
     Computes the Expected Value solution via a Gurobi model.
 
