@@ -1,23 +1,36 @@
 import numpy as np
 import util
 import models
+from typing import Dict
+import argparse
 
 
-def run():
-    np.set_printoptions(precision=3)
-
+def compute_EV_and_EEV(pars: Dict[str, np.ndarray], args) -> None:
     # compute the EV solution
-    pars = util.get_parameters()
-    ev_f, ev_sol = models.optimize_expected_value_solution(pars)
-    print('_' * 60)
-    print(f'EV solution = {ev_f:.3f}')
-    for var, value in ev_sol.items():
+    EV_f, EV_sol = models.optimize_EV_solution(pars,
+                                               verbose=args.verbose,
+                                               intvars=args.intvars)
+
+    # print EV solution
+    util.print_title('Expected Value Problems')
+    print(f'Opt. objective = {EV_f:.3f}')
+    for var, value in EV_sol.items():
         print(f'{var} = \n', value)
 
 
 if __name__ == '__main__':
-    TODO: PARSE ARGUMENT AND WHICH POINT TO SOLVE (i, ii, iii, etc...)
     # parse arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-iv', '--intvars', action='store_true',
+                        help='Use integer variables in the optimization; '
+                        'otherwise, they are continuous')
+    parser.add_argument('-v', '--verbose', action='store_true',
+                        help='Versobe Gurobi output')
+    args = parser.parse_args()
 
-    # run 
-    run()
+    # set other options
+    np.set_printoptions(precision=3, suppress=False)
+    pars = util.get_parameters()
+
+    # run
+    compute_EV_and_EEV(pars, args)
