@@ -56,3 +56,14 @@ def get_parameters() -> Dict[str, np.ndarray]:
         'Q-': np.array([[25, 25, 25, 100],                  # surplus
                         [30, 30, 30, 150]]),
     }
+
+
+def print_title(title: str) -> None:
+    L = 80
+    L1 = (L - len(title)) // 2 - 1
+    L2 = L - L1 - len(title) - 2
+    print(
+        '# ' + '=' * L + ' #',
+        '# ' + '=' * L1 + ' ' + title + ' ' + '=' * L2 + ' #',
+        '# ' + '=' * L + ' #',
+        sep='\n')

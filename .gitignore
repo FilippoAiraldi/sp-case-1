@@ -1,3 +1,4 @@
 solution*
 *.m
 *.pyc
+.vscode
