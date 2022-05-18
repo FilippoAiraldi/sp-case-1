@@ -190,7 +190,7 @@ def add_deterministic_2nd_stage_constraints(mdl: gb.Model,
 
 def optimize_EV(pars: Dict[str, np.ndarray],
                 intvars: bool = False,
-                verbose: bool = False) -> Tuple[float, Dict[str, np.ndarray]]:
+                verbose: int = 0) -> Tuple[float, Dict[str, np.ndarray]]:
     '''
     Computes the Expected Value solution via a Gurobi model.
 
@@ -201,8 +201,8 @@ def optimize_EV(pars: Dict[str, np.ndarray],
     intvars : bool, optional
         Some of the variables are constrained to integers. Otherwise, they are 
         continuous.
-    verbose : bool, optional
-        Switch for verbosity of Gurobi model. Defaults to False.
+    verbose : int, optional
+        Verbosity level of Gurobi model. Defaults to 0, i.e., no verbosity.
 
     Returns
     -------
@@ -213,7 +213,7 @@ def optimize_EV(pars: Dict[str, np.ndarray],
     '''
     # initialize model
     mdl = gb.Model(name='EV')
-    if not verbose:
+    if verbose < 1:
         mdl.Params.LogToConsole = 0
 
     # create the variables
@@ -251,11 +251,11 @@ def optimize_EEV(pars: Dict[str, np.ndarray],
                  EV_solution: Dict[str, np.ndarray],
                  samples: np.ndarray,
                  intvars: bool = False,
-                 verbose: bool = False) -> List[float]:
+                 verbose: int = 0) -> List[float]:
     # create a starting model for the first scenario. Instead of instantiating
     # a new one, the following scenarios will use it again
     mdl = gb.Model(name='EEV')
-    if not verbose:
+    if verbose < 2: 
         mdl.Params.LogToConsole = 0
 
     # create only 2nd variables, 1st stage variables are taken from the EV sol

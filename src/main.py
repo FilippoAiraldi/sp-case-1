@@ -44,8 +44,8 @@ if __name__ == '__main__':
     parser.add_argument('-iv', '--intvars', action='store_true',
                         help='Use integer variables in the optimization; '
                         'otherwise, variables are continuous.')
-    parser.add_argument('-v', '--verbose', action='store_true',
-                        help='Versobe Gurobi output')
+    parser.add_argument('-v', '--verbose', type=int, default=0,
+                        help='Verbosity of Gurobi output')
     args = parser.parse_args()
 
     # set other options
