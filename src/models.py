@@ -1,7 +1,7 @@
 import numpy as np
 import gurobipy as gb
 from gurobipy import GRB
-import itertools
+from itertools import product
 from typing import Union, Dict, Tuple
 
 
@@ -112,9 +112,8 @@ def get_objective(
                                            for i in range(cost.shape[0]))
             else:
                 ranges = range(cost.shape[0]), range(cost.shape[1])
-                objs[stage] += gb.quicksum(
-                    cost[i, j] * var[i, j]
-                    for i, j in itertools.product(*ranges))
+                objs[stage] += gb.quicksum(cost[i, j] * var[i, j]
+                                           for i, j in product(*ranges))
     return tuple(objs)
 
 
@@ -138,7 +137,7 @@ def add_first_stage_constraints(mdl: gb.Model,
 
     # sufficient sources to produce necessary products
     A, B = pars['A'], pars['B']
-    for k, (j, t) in enumerate(itertools.product(range(m), range(s))):
+    for k, (j, t) in enumerate(product(range(m), range(s))):
         AX = gb.quicksum(A[i, j] * X[i, t] for i in range(n))
         mdl.addLConstr(AX <= B[j, t] + U[j, t], name=f'con_production_{k}')
 
@@ -149,7 +148,7 @@ def add_first_stage_constraints(mdl: gb.Model,
 
     # extra capacity upper bounds
     UB = pars['UB']
-    for k, (j, t) in enumerate(itertools.product(range(m), range(s))):
+    for k, (j, t) in enumerate(product(range(m), range(s))):
         mdl.addLConstr(U[j, t] <= UB[j, t], name=f'con_extracap_{k}')
 
     mdl.update()
@@ -175,7 +174,7 @@ def add_second_stage_expval_constraints(mdl: gb.Model,
     s, n = pars['s'], pars['n']
     X, Yp, Ym = vars['X'], vars['Y+'], vars['Y-']
     d_mean = pars['demand_mean']
-    for k, (i, t) in enumerate(itertools.product(range(n), range(s))):
+    for k, (i, t) in enumerate(product(range(n), range(s))):
         mdl.addLConstr(
             X[i, t] + Ym[i, t - 1] + Yp[i, t] - Ym[i, t] == d_mean[i, t],
             name=f'con_demand_{k}')
