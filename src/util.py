@@ -1,10 +1,13 @@
 import numpy as np
+from scipy.stats import qmc
+from scipy.stats.distributions import norm
+from itertools import product
 from typing import Dict
 
 
 def get_parameters() -> Dict[str, np.ndarray]:
     '''
-    Gets the problem constant parameters.
+    Gets the constant parameters for the problem.
 
     Returns
     -------
@@ -58,7 +61,41 @@ def get_parameters() -> Dict[str, np.ndarray]:
     }
 
 
+def draw_samples(nb_samples: int, pars: Dict[str, np.ndarray]) -> np.ndarray:
+    '''
+    Draws normally distributed samples via LHS.
+
+    Parameters
+    ----------
+    nb_samples : int
+        Number of samples to draw.
+    pars : dict[str, np.ndarray]
+        Dictionary containing the optimization problem parameters.
+
+    Returns
+    -------
+    samples : np.ndarray
+        A nb_samples-by-n-by-s matrix, where each sample contains a normally 
+        distributed subsample of demand per product per period
+    '''
+    # one sample contains one demand for each product for each period, meaning
+    # that each sample an n-by-s matrix
+    n, s = pars['n'], pars['s']
+    means, stds = pars['demand_mean'], pars['demand_std']
+
+    # collect samples from an uniformely distribution
+    sampler = qmc.LatinHypercube(d=n * s)
+    samples = sampler.random(n=nb_samples).reshape(-1, n, s)
+
+    # transform to normal distributions
+    for i, t in product(range(n), range(s)):
+        samples[:, i, t] = \
+            norm(loc=means[i, t], scale=stds[i, t]).ppf(samples[:, i, t])
+    return samples
+
+
 def print_title(title: str) -> None:
+    '''Prints a nicely formatted title to console.'''
     L = 80
     L1 = (L - len(title)) // 2 - 1
     L2 = L - L1 - len(title) - 2
