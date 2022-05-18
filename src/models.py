@@ -157,11 +157,10 @@ def add_1st_stage_constraints(mdl: gb.Model,
     return
 
 
-def add_deterministic_2nd_stage_constraints(mdl: gb.Model,
-                                            pars: Dict[str, np.ndarray],
-                                            vars: Dict[str, gb.MVar],
-                                            fixed_demand: np.ndarray
-                                            ) -> None:
+def add_2nd_stage_constraints(mdl: gb.Model,
+                              pars: Dict[str, np.ndarray],
+                              vars: Dict[str, gb.MVar],
+                              demands: Union[np.ndarray, gb.MVar]) -> None:
     '''
     Adds 2nd stage constraints with some deterministic values in place of 
     random demand variables to the model.
@@ -174,8 +173,8 @@ def add_deterministic_2nd_stage_constraints(mdl: gb.Model,
         Dictionary containing the optimization problem parameters.
     vars : dict[str, gurobipy.MVar]
         Dictionary containing the optimization variables.
-    fixed_demand : np.ndarray
-        Fixed, deterministic demand values.
+    demands : np.ndarray
+        Deterministic demand values.
     '''
     s, n = pars['s'], pars['n']
     X, Yp, Ym = vars['X'], vars['Y+'], vars['Y-']
@@ -184,7 +183,7 @@ def add_deterministic_2nd_stage_constraints(mdl: gb.Model,
     for i, t in product(range(n), range(s)):
         Ym_previous = 0 if t == 1 else Ym[i, t - 1]
         mdl.addLConstr(
-            X[i, t] + Ym_previous + Yp[i, t] - Ym[i, t] == fixed_demand[i, t],
+            X[i, t] + Ym_previous + Yp[i, t] - Ym[i, t] == demands[i, t],
             name=f'con_demand_{i}_{t}')
 
 
@@ -231,8 +230,7 @@ def optimize_EV(pars: Dict[str, np.ndarray],
     d_mean = pars['demand_mean']
     if intvars:
         d_mean = d_mean.astype(int)
-    add_deterministic_2nd_stage_constraints(mdl, pars, vars_,
-                                            fixed_demand=d_mean)
+    add_2nd_stage_constraints(mdl, pars, vars_, demands=d_mean)
 
     # run optimization
     # mdl.update()
@@ -290,15 +288,16 @@ def optimize_EEV(pars: Dict[str, np.ndarray],
     objs = get_objective(pars, vars_)
     mdl.setObjective(gb.quicksum(objs), GRB.MINIMIZE)
 
-    # don't add 1st stage constraints, since those are related to the EV sol.
-    # instead, add a deterministic 2nd stage constraint based on the current
-    # random demand sample
-    add_deterministic_2nd_stage_constraints(mdl, pars, vars_,
-                                            fixed_demand=samples[0])
+    # add only 2nd stage constraints, as 1st were already handled by the EV sol
+    # the "demands" variable will be de facto used as a parameter of the
+    # optimization, as it will be fixed with lb=ub
+    demands = mdl.addMVar(
+        (pars['n'], pars['s']), lb=0.0, ub=0.0, name='demands')
+    add_2nd_stage_constraints(mdl, pars, vars_, demands=demands)
 
     # grab the list of constraints, these will be updated in the loop
-    mdl.update()
-    cons = mdl.getConstrs()
+    # mdl.update() # necessary to update so as to grab the newest constraints
+    # cons = mdl.getConstrs()
     X_EV = EV_solution['X']
 
     # solve each scenarion
@@ -307,11 +306,10 @@ def optimize_EEV(pars: Dict[str, np.ndarray],
     for i in tqdm(range(scenarios), total=scenarios, desc='solving EEV'):
         # mdl.reset()
 
-        # change constraints RHS
-        new_RHS = (samples[i] - X_EV).flatten()
-        if intvars:
-            new_RHS = new_RHS.astype(int)
-        mdl.setAttr(GRB.Attr.RHS, cons, new_RHS)
+        # set demands to i-th sample
+        sample_i = samples[i]
+        demands.setAttr(GRB.Attr.LB, sample_i)
+        demands.setAttr(GRB.Attr.UB, sample_i)
 
         # run optimization and save its result
         # mdl.update()
@@ -319,3 +317,42 @@ def optimize_EEV(pars: Dict[str, np.ndarray],
         if mdl.Status != GRB.INFEASIBLE:
             results.append(mdl.ObjVal)
     return results
+
+
+def optimize_TS(pars: Dict[str, np.ndarray],
+                samples: np.ndarray,
+                init_lb: float = 0,
+                tol: float = 1e-1,
+                max_iter: int = int(1e6),
+                intvars: bool = False,
+                verbose: int = 0) -> Tuple[float, Dict[str, np.ndarray]]:
+
+    # create master problem
+    master = gb.Model(name='Master')
+    if verbose < 2:
+        master.Params.LogToConsole = 0
+
+    # create master's variables (only 1st stage, and epigraph theta)
+    master_vars = add_variables(master, pars, stage2=False, intvars=intvars)
+    theta = master.addVar(lb=init_lb, name='theta')
+
+    # set master's objective
+    obj1, _ = get_objective(pars, master_vars, stage2=False)
+    master.setObjective(obj1 + theta, GRB.MINIMIZE)
+
+    # set master's constraints (no subgradient constraint at start)
+    add_1st_stage_constraints(master, pars, master_vars)
+
+    # create (generic) subproblem
+
+    # start the L-shape algorithm
+    for _ in tqdm(range(max_iter), total=max_iter, desc='L-shape algorithm'):
+        # solve master problem and grab variable values
+        master.optimize()
+        vars_t = {name: var.X for name, var in master_vars.items()}
+        theta_t = theta.X
+
+        # solve subproblem, i.e., Q(x_t)
+
+    # convert variables to int if requested
+    return None, None
