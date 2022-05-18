@@ -2,7 +2,8 @@ import numpy as np
 import gurobipy as gb
 from gurobipy import GRB
 from itertools import product
-from typing import Union, Dict, Tuple
+from tqdm import tqdm
+from typing import Union, Dict, Tuple, List
 
 
 def add_variables(mdl: gb.Model,
@@ -91,7 +92,7 @@ def get_objective(
         if not do:
             continue
 
-        # pick variables for this stage
+        # pick variables and costs for this stage
         if stage == 0:  # i.e., 1st stage
             vars_ = [vars['X'], vars['U'], vars['Z+'], vars['Z-']]
             costs_ = [pars['C1'], pars['C2'], pars['C3+'], pars['C3-']]
@@ -99,7 +100,7 @@ def get_objective(
             vars_ = [vars['Y+'], vars['Y-']]
             costs_ = [pars['Q+'], pars['Q-']]
 
-        # compute the actual cost
+        # compute the actual objective by multiplying variables by costs
         objs[stage] = 0
         for var, cost in zip(vars_, costs_):
             # if it is numpy, use matrix element-wise op
@@ -111,15 +112,16 @@ def get_objective(
                 objs[stage] += gb.quicksum(cost[i] * var[i]
                                            for i in range(cost.shape[0]))
             else:
-                ranges = range(cost.shape[0]), range(cost.shape[1])
-                objs[stage] += gb.quicksum(cost[i, j] * var[i, j]
-                                           for i, j in product(*ranges))
+                objs[stage] += gb.quicksum(
+                    cost[i, j] * var[i, j]
+                    for i, j in product(
+                        range(cost.shape[0]), range(cost.shape[1])))
     return tuple(objs)
 
 
-def add_first_stage_constraints(mdl: gb.Model,
-                                pars: Dict[str, np.ndarray],
-                                vars: Dict[str, gb.MVar]) -> None:
+def add_1st_stage_constraints(mdl: gb.Model,
+                              pars: Dict[str, np.ndarray],
+                              vars: Dict[str, gb.MVar]) -> None:
     '''
     Adds 1st stage constraints to the model.
 
@@ -137,30 +139,32 @@ def add_first_stage_constraints(mdl: gb.Model,
 
     # sufficient sources to produce necessary products
     A, B = pars['A'], pars['B']
-    for k, (j, t) in enumerate(product(range(m), range(s))):
+    for j, t in product(range(m), range(s)):
         AX = gb.quicksum(A[i, j] * X[i, t] for i in range(n))
-        mdl.addLConstr(AX <= B[j, t] + U[j, t], name=f'con_production_{k}')
+        mdl.addLConstr(AX <= B[j, t] + U[j, t], name=f'con_production_{j}_{t}')
 
     # work force level increase/decrease
-    for k, t in enumerate(range(1, s)):
+    for t in range(1, s):
         AXX = gb.quicksum(A[i, -1] * (X[i, t] - X[i, t - 1]) for i in range(n))
-        mdl.addLConstr(Zp[t - 1] - Zm[t - 1] == AXX, name=f'con_workforce_{k}')
+        mdl.addLConstr(Zp[t - 1] - Zm[t - 1] == AXX, name=f'con_workforce_{t}')
 
     # extra capacity upper bounds
     UB = pars['UB']
-    for k, (j, t) in enumerate(product(range(m), range(s))):
-        mdl.addLConstr(U[j, t] <= UB[j, t], name=f'con_extracap_{k}')
+    for j, t in product(range(m), range(s)):
+        mdl.addLConstr(U[j, t] <= UB[j, t], name=f'con_extracap_{j}_{t}')
 
     mdl.update()
     return
 
 
-def add_second_stage_expval_constraints(mdl: gb.Model,
-                                        pars: Dict[str, np.ndarray],
-                                        vars: Dict[str, gb.MVar]) -> None:
+def add_deterministic_2nd_stage_constraints(mdl: gb.Model,
+                                            pars: Dict[str, np.ndarray],
+                                            vars: Dict[str, gb.MVar],
+                                            fixed_demand: np.ndarray
+                                            ) -> None:
     '''
-    Adds 2nd stage constraints with expected values in place of random 
-    variables to the model.
+    Adds 2nd stage constraints with some deterministic values in place of 
+    random demand variables to the model.
 
     Parameters
     ----------
@@ -170,14 +174,18 @@ def add_second_stage_expval_constraints(mdl: gb.Model,
         Dictionary containing the optimization problem parameters.
     vars : dict[str, gurobipy.MVar]
         Dictionary containing the optimization variables.
+    fixed_demand : np.ndarray
+        Fixed, deterministic demand values.
     '''
     s, n = pars['s'], pars['n']
     X, Yp, Ym = vars['X'], vars['Y+'], vars['Y-']
-    d_mean = pars['demand_mean']
-    for k, (i, t) in enumerate(product(range(n), range(s))):
+
+    # in the first period, zero surplus is assumed
+    for i, t in product(range(n), range(s)):
+        Ym_previous = 0 if t == 1 else Ym[i, t - 1]
         mdl.addLConstr(
-            X[i, t] + Ym[i, t - 1] + Yp[i, t] - Ym[i, t] == d_mean[i, t],
-            name=f'con_demand_{k}')
+            X[i, t] + Ym_previous + Yp[i, t] - Ym[i, t] == fixed_demand[i, t],
+            name=f'con_demand_{i}_{t}')
 
 
 def optimize_EV(pars: Dict[str, np.ndarray],
@@ -211,24 +219,79 @@ def optimize_EV(pars: Dict[str, np.ndarray],
     # create the variables
     vars_ = add_variables(mdl, pars, intvars=intvars)
 
-    # get the 1st and 2nd stage objectives, and sum them up (avoiding Nones)
+    # get the 1st and 2nd stage objectives, and sum them up
     objs = get_objective(pars, vars_)
     mdl.setObjective(gb.quicksum(objs), GRB.MINIMIZE)
 
     # add 1st stage constraints
-    add_first_stage_constraints(mdl, pars, vars_)
+    add_1st_stage_constraints(mdl, pars, vars_)
 
     # to get the EV Solution, in the second stage constraints the random
     # variables are replaced with their expected value
-    add_second_stage_expval_constraints(mdl, pars, vars_)
+    d_mean = pars['demand_mean']
+    if intvars:
+        d_mean = d_mean.astype(int)
+    add_deterministic_2nd_stage_constraints(mdl, pars, vars_,
+                                            fixed_demand=d_mean)
 
     # run optimization
     # mdl.update()
     mdl.optimize()
 
     # retrieve optimal objective value and optimal variables
-    optimal_obj = mdl.getAttr(GRB.Attr.ObjVal)
+    convert = (lambda o: o.astype(int)) if intvars else (lambda o: o)
+    optimal_obj = mdl.ObjVal
     solution = {
-        name: var.getAttr(GRB.Attr.X) for name, var in vars_.items()
+        name: convert(var.X) for name, var in vars_.items()
     }
     return optimal_obj, solution
+
+
+def optimize_EEV(pars: Dict[str, np.ndarray],
+                 EV_solution: Dict[str, np.ndarray],
+                 samples: np.ndarray,
+                 intvars: bool = False,
+                 verbose: bool = False) -> List[float]:
+    # create a starting model for the first scenario. Instead of instantiating
+    # a new one, the following scenarios will use it again
+    mdl = gb.Model(name='EEV')
+    if not verbose:
+        mdl.Params.LogToConsole = 0
+
+    # create only 2nd variables, 1st stage variables are taken from the EV sol
+    vars_ = EV_solution | add_variables(mdl, pars, stage1=False,
+                                        intvars=intvars)
+
+    # get numerical 1st stage and symbolical 2nd stage objectives
+    objs = get_objective(pars, vars_)
+    mdl.setObjective(gb.quicksum(objs), GRB.MINIMIZE)
+
+    # don't add 1st stage constraints, since those are related to the EV sol.
+    # instead, add a deterministic 2nd stage constraint based on the current
+    # random demand sample
+    add_deterministic_2nd_stage_constraints(mdl, pars, vars_,
+                                            fixed_demand=samples[0])
+
+    # grab the list of constraints, these will be updated in the loop
+    mdl.update()
+    cons = mdl.getConstrs()
+    X_EV = EV_solution['X']
+
+    # solve each scenarion
+    results = []
+    scenarios = samples.shape[0]
+    for i in tqdm(range(scenarios), total=scenarios, desc='solving EEV'):
+        # mdl.reset()
+
+        # change constraints RHS
+        new_RHS = (samples[i] - X_EV).flatten()
+        if intvars:
+            new_RHS = new_RHS.astype(int)
+        mdl.setAttr(GRB.Attr.RHS, cons, new_RHS)
+
+        # run optimization and save its result
+        # mdl.update()
+        mdl.optimize()
+        if mdl.Status != GRB.INFEASIBLE:
+            results.append(mdl.ObjVal)
+    return results
