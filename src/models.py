@@ -252,10 +252,34 @@ def optimize_EEV(pars: Dict[str, np.ndarray],
                  samples: np.ndarray,
                  intvars: bool = False,
                  verbose: int = 0) -> List[float]:
+    '''
+    Computes the expected value of the Expected Value solution via multiple 
+    Gurobi models.
+
+    Parameters
+    ----------
+    pars : dict[str, np.ndarray]
+        Dictionary containing the optimization problem parameters.
+    EV_solution : dict[str, np.ndarry]
+        Dictionary containing the solution to the EV problem.
+    samples : np.ndarray
+        Array of different samples/scenarios approximating the demand 
+        distributions.
+    intvars : bool, optional
+        Some of the variables are constrained to integers. Otherwise, they are 
+        continuous.
+    verbose : int, optional
+        Verbosity level of Gurobi model. Defaults to 0, i.e., no verbosity.
+
+    Returns
+    -------
+    objs : list[float]
+        A list containing the optimal objective for each scenario.
+    '''
     # create a starting model for the first scenario. Instead of instantiating
     # a new one, the following scenarios will use it again
     mdl = gb.Model(name='EEV')
-    if verbose < 2: 
+    if verbose < 2:
         mdl.Params.LogToConsole = 0
 
     # create only 2nd variables, 1st stage variables are taken from the EV sol
