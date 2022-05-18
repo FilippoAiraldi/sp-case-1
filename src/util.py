@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.stats import qmc
-from scipy.stats.distributions import norm
-from itertools import product
+from scipy.stats.distributions import truncnorm
+import itertools
 from typing import Dict
 
 
@@ -61,7 +61,8 @@ def get_parameters() -> Dict[str, np.ndarray]:
     }
 
 
-def draw_samples(nb_samples: int, pars: Dict[str, np.ndarray]) -> np.ndarray:
+def draw_samples(nb_samples: int, pars: Dict[str, np.ndarray], 
+                 seed: int = None) -> np.ndarray:
     '''
     Draws normally distributed samples via LHS.
 
@@ -71,6 +72,8 @@ def draw_samples(nb_samples: int, pars: Dict[str, np.ndarray]) -> np.ndarray:
         Number of samples to draw.
     pars : dict[str, np.ndarray]
         Dictionary containing the optimization problem parameters.
+    seed : int, optional
+        Random number seed.
 
     Returns
     -------
@@ -84,13 +87,16 @@ def draw_samples(nb_samples: int, pars: Dict[str, np.ndarray]) -> np.ndarray:
     means, stds = pars['demand_mean'], pars['demand_std']
 
     # collect samples from an uniformely distribution
-    sampler = qmc.LatinHypercube(d=n * s)
+    sampler = qmc.LatinHypercube(d=n * s, seed=seed)
     samples = sampler.random(n=nb_samples).reshape(-1, n, s)
 
     # transform to normal distributions
-    for i, t in product(range(n), range(s)):
-        samples[:, i, t] = \
-            norm(loc=means[i, t], scale=stds[i, t]).ppf(samples[:, i, t])
+    for i, t in itertools.product(range(n), range(s)):
+        mean, std = means[i, t], stds[i, t]
+        a, b = -mean / std, np.inf
+        samples[:, i, t] = truncnorm(
+            a=a, b=b, loc=mean, scale=std).ppf(samples[:, i, t])
+    assert (samples >= 0).all(), 'negative demand'
     return samples
 
 
@@ -99,7 +105,7 @@ def print_title(title: str) -> None:
     L = 80
     L1 = (L - len(title)) // 2 - 1
     L2 = L - L1 - len(title) - 2
-    print(
+    print('\n',
         '# ' + '=' * L + ' #',
         '# ' + '=' * L1 + ' ' + title + ' ' + '=' * L2 + ' #',
         '# ' + '=' * L + ' #',
