@@ -5,25 +5,32 @@ from typing import Dict
 import argparse
 
 
-def compute_EV_and_EEV(pars: Dict[str, np.ndarray],
-                       samples: np.ndarray, args) -> None:
+def point_a(pars: Dict[str, np.ndarray],
+            samples: np.ndarray, args) -> None:
+    '''Runs computations for points a (EV, EEV and TS).'''
     # compute the EV solution
-    EV_f, EV_sol = models.optimize_EV(pars, intvars=args.intvars,
-                                      verbose=args.verbose)
-
-    # print EV solution
     util.print_title('Expected Value')
+    EV_f, EV_sol = models.optimize_EV(
+        pars, intvars=args.intvars, verbose=args.verbose)
     print(f'EV = {EV_f:.3f}')
     for var, value in EV_sol.items():
         print(f'{var} = \n', value)
 
     # compute EEV solution
-    EEV_fs = models.optimize_EEV(pars, EV_sol, samples, intvars=args.intvars,
-                                 verbose=args.verbose)
-
     util.print_title('Expected result of Expected Value')
+    EEV_fs = models.optimize_EEV(
+        pars, EV_sol, samples, intvars=args.intvars, verbose=args.verbose)
     print(f'EEV = {np.mean(EEV_fs):.3f}',
           f'({samples.shape[0] - len(EEV_fs)} scenarios were infeasible)')
+
+    # TODO: solve TS by L-shape?
+    # ...
+
+
+def point_b(): pass
+def point_c(): pass
+def point_d(): pass
+def point_e(): pass
 
 
 if __name__ == '__main__':
@@ -46,8 +53,8 @@ if __name__ == '__main__':
 
     # create parameters and LHS samples
     constant_pars = util.get_parameters()
-    demand_samples = util.draw_samples(args.samples, constant_pars, 
+    demand_samples = util.draw_samples(args.samples, constant_pars,
                                        seed=args.seed)
 
-    # run
-    compute_EV_and_EEV(pars=constant_pars, samples=demand_samples, args=args)
+    # run point (a)
+    point_a(pars=constant_pars, samples=demand_samples, args=args)
