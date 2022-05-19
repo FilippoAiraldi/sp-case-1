@@ -8,22 +8,38 @@ import argparse
 def point_a(pars: Dict[str, np.ndarray],
             samples: np.ndarray, args) -> None:
     '''Runs computations for points a (EV, EEV and TS).'''
-    # compute the EV solution
+
+    # compute EV solution
     util.print_title('Expected Value')
+
     EV_obj, EV_vars1, EV_vars2 = models.optimize_EV(
         pars, intvars=args.intvars, verbose=args.verbose)
+
     print(f'EV = {EV_obj:.3f}')
     for var, value in (EV_vars1 | EV_vars2).items():
         print(f'{var} = \n', value)
 
     # compute EEV solution
     util.print_title('Expected result of Expected Value')
-    EEV_fs = models.optimize_EEV(
-        pars, EV_vars1, samples, intvars=args.intvars, verbose=args.verbose)
-    print(f'EEV = {np.mean(EEV_fs):.3f}',
-          f'({samples.shape[0] - len(EEV_fs)} scenarios were infeasible)')
 
-    # TODO: solve TS by L-shape?
+    EEV_objs = models.optimize_EEV(
+        pars, EV_vars1, samples, intvars=args.intvars, verbose=args.verbose)
+
+    print(f'EEV = {np.mean(EEV_objs):.3f}',
+          f'({samples.shape[0] - len(EEV_objs)} scenarios were infeasible)')
+
+    # compute TS
+    util.print_title('Two-stage Model')
+
+    TS_obj, TS_vars1 = models.optimize_TS(pars, samples,
+                                          intvars=args.intvars,
+                                          verbose=args.verbose)
+
+    print(f'EV = {TS_obj:.3f}')
+    for var, value in TS_vars1.items():
+        print(f'{var} = \n', value)
+
+    # assess TS solution quality via MRP
     # ...
 
 
@@ -53,8 +69,12 @@ if __name__ == '__main__':
 
     # create parameters and LHS samples
     constant_pars = util.get_parameters()
-    demand_samples = util.draw_samples(args.samples, constant_pars,
-                                       seed=args.seed)
+
+    # samples to approximate the continuous demands distributions as discrete
+    # (used in EEV and TS)
+    samples = util.draw_samples(args.samples, constant_pars, seed=args.seed)
+    if args.intvars:
+        samples = samples.astype(int)
 
     # run point (a)
-    point_a(pars=constant_pars, samples=demand_samples, args=args)
+    point_a(pars=constant_pars, samples=samples, args=args)
