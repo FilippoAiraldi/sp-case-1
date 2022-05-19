@@ -621,3 +621,45 @@ def optimize_WS(pars: Dict[str, np.ndarray],
         if mdl.Status != GRB.INFEASIBLE:
             results.append(mdl.ObjVal)
     return results
+
+
+def compute_purchase_probability(pars: Dict[str, np.ndarray],
+                                 solution: dict[str, np.ndarray],
+                                 sample_size: int,
+                                 intvars: bool = False,
+                                 verbose: int = 0) -> float:
+
+    # draw samples to approximate demands
+    samples = util.draw_samples(sample_size, pars, asint=intvars)
+
+    # for each sample, solve the 2nd stage problem and count how many time
+    # there is some purchase (Y+ > 0)
+
+    # create also a submodel to solve only the second stage problem
+    mdl = gb.Model(name='PurchProb')
+    if verbose < 2:
+        mdl.Params.LogToConsole = 0
+
+    # add 2nd stage variables and only X from 1st stage
+    vars2 = add_2nd_stage_variables(mdl, pars, intvars=intvars)
+    Yp = vars2['Y+']
+
+    # set objective, only 2nd stage
+    mdl.setObjective(get_2nd_stage_objective(pars, vars2), GRB.MINIMIZE)
+
+    # set constraints, only 2nd stage
+    demands = add_2nd_stage_constraints(mdl, pars, solution, vars2)
+
+    # solve for each sample
+    prob = 0.0
+    for i in tqdm(range(sample_size), total=sample_size, desc='purchase prob'):
+        # set the demand of the i-th sample
+        fix_var(demands, samples[i])
+
+        # solve the model
+        mdl.optimize()
+
+        # check whether there are purchases in some period for some product
+        prob += (Yp.X > 0).sum() / Yp.X.size / sample_size
+
+    return prob

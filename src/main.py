@@ -6,21 +6,7 @@ from typing import Dict, Any
 
 
 def point_a(pars: Dict[str, np.ndarray], args) -> Dict[str, Any]:
-    '''
-    Runs computations for points a (EV, EEV and TS).
-
-    Parameters
-    ----------
-    pars : dict[str, np.ndarray]
-        Dictionary containing the optimization problem parameters.
-    args : argsnamespace
-        Parsed command line arguments 
-
-    Returns
-    -------
-    results : dict[str, any]
-        Dictionary containing all the results of this point.
-    '''
+    '''Runs computations for points a (EV, EEV and TS).'''
     # draw samples to approximate continuous demand distributions as discrete
     samples = util.draw_samples(args.samples, pars,
                                 asint=args.intvars, seed=args.seed)
@@ -46,7 +32,7 @@ def point_a(pars: Dict[str, np.ndarray], args) -> Dict[str, Any]:
     TS_obj, TS_vars1 = models.optimize_TS(pars, samples,
                                           intvars=args.intvars,
                                           verbose=args.verbose)
-    print(f'EV = {TS_obj:.3f}')
+    print(f'TS = {TS_obj:.3f}')
     for var, value in TS_vars1.items():
         print(f'{var} = \n', value)
 
@@ -81,7 +67,21 @@ def point_a(pars: Dict[str, np.ndarray], args) -> Dict[str, Any]:
 
 
 def point_b(): pass
-def point_c(): pass
+
+
+def point_c(pars: Dict[str, np.ndarray],
+            TS_sol: Dict[str, np.ndarray], args) -> Dict[str, float]:
+    '''Runs computations for points c.'''
+    # compute the probability of an outside purchase under the TS solution.
+    # Of course, sample enough samples to approximate the demands.
+
+    util.print_title('Outside Purchase Probability')
+    prob = models.compute_purchase_probability(
+        pars, TS_sol, args.samples, intvars=args.intvars, verbose=args.verbose)
+    print('With a sample size of', args.samples, '- probability =', prob)
+    return {'prob': prob}
+
+
 def point_d(): pass
 def point_e(): pass
 
@@ -95,7 +95,9 @@ if __name__ == '__main__':
 
     # run points
     results_a = point_a(pars=constant_pars, args=args)
+    # ... point b ...
+    results_c = point_c(constant_pars, results_a['TS']['sol'], args)
 
     # save results
     util.save_results(execution_time=time.process_time() - starttime,
-                      args=args.__dict__, a=results_a)
+                      args=args.__dict__, a=results_a, c=results_c)
