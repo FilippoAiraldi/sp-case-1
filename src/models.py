@@ -477,7 +477,7 @@ def run_MRP(pars: Dict[str, np.ndarray],
     demands = [add_2nd_stage_constraints(mdl, pars, vars1, vars2[s])
                for s in range(S)]
 
-    # save demands as a list
+    # save demands as a list, it will be faster to change its LB and UB
     demands = list(chain.from_iterable(
         chain.from_iterable(d.tolist() for d in demands)))
 
@@ -503,7 +503,6 @@ def run_MRP(pars: Dict[str, np.ndarray],
         # draw a sample
         sample = util.draw_samples(S, pars, asint=intvars, seed=69)
 
-        
         # fix the problem's demands to this sample
         mdl.setAttr(GRB.Attr.LB, demands, sample.flatten().tolist())
         mdl.setAttr(GRB.Attr.UB, demands, sample.flatten().tolist())
