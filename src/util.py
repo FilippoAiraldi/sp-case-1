@@ -1,8 +1,36 @@
 import numpy as np
 from scipy.stats import qmc
 from scipy.stats.distributions import truncnorm
+import argparse
 import itertools
+from datetime import datetime
+import pickle
+import json
+from json import JSONEncoder
 from typing import Dict
+
+
+def parse_args():
+    '''Parses the command line arguments'''
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-s', '--samples', type=int, default=int(1e5),
+                        help='Number of LHS samples to approximate the '
+                        'recourse model.')
+    parser.add_argument('-a', '--alpha', type=float, default=0.95,
+                        metavar='(0-1)', help='MRP Confidence level.')
+    parser.add_argument('-r', '--replicas', type=int, default=30,
+                        help='MRP number of replicas.')
+    parser.add_argument('-iv', '--intvars', action='store_true',
+                        help='Use integer variables in the optimization; '
+                        'otherwise, variables are continuous.')
+    parser.add_argument('--seed', type=int, default=None,
+                        help='RNG seed.')
+    parser.add_argument('-v', '--verbose', type=int, default=0,
+                        choices=[0, 1, 2], help='Verbosity of Gurobi output')
+    args = parser.parse_args()
+    ok = args.samples > 0 and 0 < args.alpha < 1 and args.replicas > 0
+    assert ok, 'invalid arguments'
+    return args
 
 
 def get_parameters() -> Dict[str, np.ndarray]:
@@ -61,9 +89,9 @@ def get_parameters() -> Dict[str, np.ndarray]:
     }
 
 
-def draw_samples(nb_samples: int, 
-                 pars: Dict[str, np.ndarray], 
-                 seed: int = None, 
+def draw_samples(nb_samples: int,
+                 pars: Dict[str, np.ndarray],
+                 seed: int = None,
                  asint: bool = False) -> np.ndarray:
     '''
     Draws normally distributed samples via LHS.
@@ -114,7 +142,29 @@ def print_title(title: str) -> None:
     L1 = (L - len(title)) // 2 - 1
     L2 = L - L1 - len(title) - 2
     print('\n',
-        '# ' + '=' * L + ' #',
-        '# ' + '=' * L1 + ' ' + title + ' ' + '=' * L2 + ' #',
-        '# ' + '=' * L + ' #',
-        sep='\n')
+          '# ' + '=' * L + ' #',
+          '# ' + '=' * L1 + ' ' + title + ' ' + '=' * L2 + ' #',
+          '# ' + '=' * L + ' #',
+          sep='\n')
+
+
+class NumpyArrayEncoder(JSONEncoder):
+    '''Custom class to serialize numpy arrays in a json.'''
+
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return JSONEncoder.default(self, obj)
+
+
+def save_results(
+        to_pickle: bool = True, to_json: bool = True, **kwargs) -> None:
+    '''Save results to pickle and json,'''
+
+    filename = f'R_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+    if to_pickle:
+        with open(f'{filename}.pkl', 'wb') as f:
+            pickle.dump(kwargs, f)
+    if to_json:
+        with open(f'{filename}.json', 'w') as f:
+            json.dump(kwargs, f, cls=NumpyArrayEncoder, indent=4)
