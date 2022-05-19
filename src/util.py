@@ -61,8 +61,10 @@ def get_parameters() -> Dict[str, np.ndarray]:
     }
 
 
-def draw_samples(nb_samples: int, pars: Dict[str, np.ndarray], 
-                 seed: int = None) -> np.ndarray:
+def draw_samples(nb_samples: int, 
+                 pars: Dict[str, np.ndarray], 
+                 seed: int = None, 
+                 asint: bool = False) -> np.ndarray:
     '''
     Draws normally distributed samples via LHS.
 
@@ -74,6 +76,8 @@ def draw_samples(nb_samples: int, pars: Dict[str, np.ndarray],
         Dictionary containing the optimization problem parameters.
     seed : int, optional
         Random number seed.
+    asint : bool, optional
+        Forces the drawn samples to be integers.
 
     Returns
     -------
@@ -97,6 +101,10 @@ def draw_samples(nb_samples: int, pars: Dict[str, np.ndarray],
         samples[:, i, t] = truncnorm(
             a=a, b=b, loc=mean, scale=std).ppf(samples[:, i, t])
     assert (samples >= 0).all(), 'negative demand'
+
+    # convert to int if necessary
+    if asint:
+        samples = samples.astype(int)
     return samples
 
 

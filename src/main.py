@@ -90,9 +90,8 @@ if __name__ == '__main__':
 
     # samples to approximate the continuous demands distributions as discrete
     # (used in EEV and TS)
-    samples = util.draw_samples(args.samples, constant_pars, seed=args.seed)
-    if args.intvars:
-        samples = samples.astype(int)
+    samples = util.draw_samples(args.samples, constant_pars,
+                                asint=args.intvars, seed=args.seed)
 
     # run point (a)
     point_a(pars=constant_pars, samples=samples, args=args)
