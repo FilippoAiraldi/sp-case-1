@@ -9,7 +9,7 @@ def point_a(pars: Dict[str, np.ndarray],
             samples: np.ndarray, args) -> None:
     '''Runs computations for points a (EV, EEV and TS).'''
 
-    # compute EV solution
+    # compute EV
     util.print_title('Expected Value')
 
     EV_obj, EV_vars1, EV_vars2 = models.optimize_EV(
@@ -19,13 +19,14 @@ def point_a(pars: Dict[str, np.ndarray],
     for var, value in (EV_vars1 | EV_vars2).items():
         print(f'{var} = \n', value)
 
-    # compute EEV solution
+    # compute EEV
     util.print_title('Expected result of Expected Value')
 
     EEV_objs = models.optimize_EEV(
         pars, EV_vars1, samples, intvars=args.intvars, verbose=args.verbose)
+    EEV_obj = np.mean(EEV_objs)
 
-    print(f'EEV = {np.mean(EEV_objs):.3f}',
+    print(f'EEV = {EEV_obj:.3f}',
           f'({samples.shape[0] - len(EEV_objs)} scenarios were infeasible)')
 
     # compute TS
@@ -41,6 +42,21 @@ def point_a(pars: Dict[str, np.ndarray],
 
     # assess TS solution quality via MRP
     # ...
+
+    # compute VSS
+    VSS = EEV_obj - TS_obj
+
+    # compute WS
+    util.print_title('Wait-and-See')
+
+    WS_objs = models.optimize_WS(
+        pars, samples, intvars=args.intvars, verbose=args.verbose)
+    WS_obj = np.mean(WS_objs)
+
+    print(f'EEV = {WS_obj:.3f}',
+          f'({samples.shape[0] - len(WS_objs)} scenarios were infeasible)')
+
+    return
 
 
 def point_b(): pass
