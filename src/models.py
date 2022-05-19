@@ -454,6 +454,32 @@ def run_MRP(pars: Dict[str, np.ndarray],
             replicas: int = 30,
             intvars: bool = False,
             verbose: int = 0) -> float:
+    '''
+    Applies the MRP to a given solution to compute its confidence interval.
+
+    Parameters
+    ----------
+    pars : dict[str, np.ndarray]
+        Dictionary containing the optimization problem parameters.
+    solution : dict[str, np.ndarry]
+        Dictionary containing a solution to the problem.
+    sample_size : int
+        Size of the samples to draw.
+    alpha : flaot, optiona
+        Confidence percentage for the MRP.
+    replicas : int
+        Number of replications for the MRP.
+    intvars : bool, optional
+        Some of the variables are constrained to integers. Otherwise, they are 
+        continuous.
+    verbose : int, optional
+        Verbosity level of Gurobi model. Defaults to 0, i.e., no verbosity.
+
+    Returns
+    -------
+    CI : float
+        An upper bound on the optimality gap of the given solution.
+    '''
     # using the MRP basically mean computing N times the LSTDE
     # create large scale deterministic equivalent problem
     S = sample_size
