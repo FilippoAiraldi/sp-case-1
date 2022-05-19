@@ -1,9 +1,11 @@
 import numpy as np
+from scipy import stats
 import gurobipy as gb
 from gurobipy import GRB
-from itertools import product
+from itertools import product, chain
 from tqdm import tqdm
 from typing import Union, Dict, Tuple, List, Optional
+import util
 
 
 def add_1st_stage_variables(mdl: gb.Model,
@@ -70,7 +72,7 @@ def add_2nd_stage_variables(mdl: gb.Model,
 
 def fix_var(var: gb.MVar, value: Union[float, np.ndarray]) -> None:
     '''
-    Fixes a variable to a given value.
+    Fixes a variable to a given value. Not recommended to use this in a loop.
 
     Parameters
     ----------
@@ -312,10 +314,12 @@ def optimize_EV(
     mdl.optimize()
 
     # retrieve optimal objective value and optimal variables
+    objval = mdl.ObjVal
     convert = (lambda o: o.astype(int)) if intvars else (lambda o: o)
     sol1 = {name: convert(var.X) for name, var in vars1.items()}
     sol2 = {name: convert(var.X) for name, var in vars2.items()}
-    return mdl.ObjVal, sol1, sol2
+    mdl.dispose()
+    return objval, sol1, sol2
 
 
 def optimize_EEV(pars: Dict[str, np.ndarray],
@@ -376,6 +380,8 @@ def optimize_EEV(pars: Dict[str, np.ndarray],
         mdl.optimize()
         if mdl.Status != GRB.INFEASIBLE:
             results.append(mdl.ObjVal)
+
+    mdl.dispose()
     return results
 
 
@@ -414,10 +420,8 @@ def optimize_TS(pars: Dict[str, np.ndarray],
     if verbose < 1:
         mdl.Params.LogToConsole = 0
 
-    # create 1st stage variables
+    # create 1st stage variables and 2nd stage variables, one per scenario
     vars1 = add_1st_stage_variables(mdl, pars, intvars=intvars)
-
-    # create one set of 2nd stage variables per scenario
     vars2 = [
         add_2nd_stage_variables(mdl, pars, intvars=intvars) for _ in range(S)
     ]
@@ -436,9 +440,106 @@ def optimize_TS(pars: Dict[str, np.ndarray],
     mdl.optimize()
 
     # return the solution
+    objval = mdl.ObjVal
     convert = (lambda o: o.astype(int)) if intvars else (lambda o: o)
     sol1 = {name: convert(var.X) for name, var in vars1.items()}
-    return mdl.ObjVal, sol1
+    mdl.dispose()
+    return objval, sol1
+
+
+def run_MRP(pars: Dict[str, np.ndarray],
+            solution: dict[str, np.ndarray],
+            sample_size: int,
+            alpha: float = 0.95,
+            replicas: int = 30,
+            intvars: bool = False,
+            verbose: int = 0) -> float:
+    # using the MRP basically mean computing N times the LSTDE
+    # create large scale deterministic equivalent problem
+    S = sample_size
+    mdl = gb.Model(name='LSDE')
+    if verbose < 2:
+        mdl.Params.LogToConsole = 0
+
+    # create 1st stage variables and 2nd stage variables, one per scenario
+    vars1 = add_1st_stage_variables(mdl, pars, intvars=intvars)
+    vars2 = [
+        add_2nd_stage_variables(mdl, pars, intvars=intvars) for _ in range(S)
+    ]
+
+    # set objective
+    obj1 = get_1st_stage_objective(pars, vars1)
+    objs2 = [get_2nd_stage_objective(pars, var2) for var2 in vars2]
+    mdl.setObjective(obj1 + (1 / S) * gb.quicksum(objs2), GRB.MINIMIZE)
+
+    # set constraints
+    add_1st_stage_constraints(mdl, pars, vars1)
+    demands = [add_2nd_stage_constraints(mdl, pars, vars1, vars2[s])
+               for s in range(S)]
+
+    # save demands as a list
+    demands = list(chain.from_iterable(
+        chain.from_iterable(d.tolist() for d in demands)))
+
+    # create also a submodel to solve only the second stage problem
+    sub = gb.Model(name='sub')
+    if verbose < 2:
+        sub.Params.LogToConsole = 0
+
+    # add 2nd stage variables and only X from 1st stage
+    sub_vars1 = {'X': sub.addMVar(
+        (pars['n'], pars['s']), lb=0, ub=0, name='X')}
+    sub_vars2 = add_2nd_stage_variables(sub, pars, intvars=intvars)
+
+    # set objective, only 2nd stage
+    sub.setObjective(get_2nd_stage_objective(pars, sub_vars2), GRB.MINIMIZE)
+
+    # set constraints, only 2nd stage
+    sub_demand = add_2nd_stage_constraints(sub, pars, sub_vars1, sub_vars2)
+
+    # start the MRP
+    G = []
+    for _ in tqdm(range(replicas), total=replicas, desc='MRP iteration'):
+        # draw a sample
+        sample = util.draw_samples(S, pars, asint=intvars, seed=69)
+
+        
+        # fix the problem's demands to this sample
+        mdl.setAttr(GRB.Attr.LB, demands, sample.flatten().tolist())
+        mdl.setAttr(GRB.Attr.UB, demands, sample.flatten().tolist())
+
+        # solve the problem
+        mdl.optimize()
+        vars1_k = {name: var.X for name, var in vars1.items()}
+
+        # calculate G_k
+        G_k = 0
+        for i in tqdm(range(S), total=S, desc='Computing G  ', leave=False):
+            # solve v(w_k_s, x_hat)
+            fix_var(sub_demand, sample[i])
+            fix_var(sub_vars1['X'], solution['X'])
+            sub.optimize()
+            a = get_1st_stage_objective(pars, solution) + sub.ObjVal
+
+            # solve v(w_k_s, x_k)
+            fix_var(sub_vars1['X'], vars1_k['X'])
+            b = get_1st_stage_objective(pars, vars1_k) + sub.ObjVal
+
+            # accumulate in G_k
+            G_k += (a - b) / S
+
+        G.append(G_k)
+
+    mdl.dispose()
+    sub.dispose()
+
+    # compute the confidence interval
+    G = np.array(G)
+    G_bar = G.mean()
+    sG = np.sqrt(1 / (replicas - 1) * np.square(G - G_bar).sum())
+    sG_ = G.std(ddof=1)
+    eps = stats.t.ppf(alpha, replicas - 1) * sG / np.sqrt(replicas)
+    return G_bar + eps
 
 
 def optimize_WS(pars: Dict[str, np.ndarray],

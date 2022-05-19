@@ -9,6 +9,9 @@ def point_a(pars: Dict[str, np.ndarray],
             samples: np.ndarray, args) -> None:
     '''Runs computations for points a (EV, EEV and TS).'''
 
+    import time
+    starttime = time.process_time()
+
     # compute EV
     util.print_title('Expected Value')
 
@@ -41,7 +44,10 @@ def point_a(pars: Dict[str, np.ndarray],
         print(f'{var} = \n', value)
 
     # assess TS quality via MRP
-    # ...
+    CI = models.run_MRP(pars, TS_vars1, samples.shape[0], alpha=args.alpha,
+                        replicas=args.replicas, intvars=args.intvars,
+                        verbose=args.verbose)
+    print('Bound on optimality gap =', CI)
 
     # compute WS
     util.print_title('Wait-and-See')
@@ -58,6 +64,21 @@ def point_a(pars: Dict[str, np.ndarray],
     EVPI = TS_obj - WS_obj
     print('VSS =', VSS, '- EVPI =', EVPI)
 
+    import pickle
+    intvars = 'I'if args.intvars else 'C'
+    print('HEEEEEY', args.__dict__)
+    with open(f'a_samples_{samples.shape[0]}_type_{intvars}.pkl', 'wb') as f:
+        pickle.dump({
+            'execution time': time.process_time() - starttime,
+            'args': args.__dict__,
+            'EV': {'obj': EV_obj, 'sol': EV_vars1 | EV_vars2},
+            'EEV': EEV_obj,
+            'TS': {'obj': TS_obj, 'sol': TS_vars1},
+            'MRP_CI': CI,
+            'WS': WS_obj,
+            'VSS': VSS,
+            'EVPI': EVPI
+        }, f)
     return
 
 
@@ -73,14 +94,20 @@ if __name__ == '__main__':
     parser.add_argument('-s', '--samples', type=int, default=int(1e5),
                         help='Number of LHS samples to approximate the '
                         'recourse model.')
-    parser.add_argument('--seed', type=int, default=None,
-                        help='RNG seed.')
+    parser.add_argument('-a', '--alpha', type=float, default=0.95,
+                        metavar='(0-1)', help='MRP Confidence level.')
+    parser.add_argument('-r', '--replicas', type=int, default=30,
+                        help='MRP number of replicas.')
     parser.add_argument('-iv', '--intvars', action='store_true',
                         help='Use integer variables in the optimization; '
                         'otherwise, variables are continuous.')
+    parser.add_argument('--seed', type=int, default=None,
+                        help='RNG seed.')
     parser.add_argument('-v', '--verbose', type=int, default=0,
                         choices=[0, 1, 2], help='Verbosity of Gurobi output')
     args = parser.parse_args()
+    ok = args.samples > 0 and 0 < args.alpha < 1 and args.replicas > 0
+    assert ok, 'invalid arguments'
 
     # set other options
     np.set_printoptions(precision=3, suppress=False)
@@ -89,7 +116,6 @@ if __name__ == '__main__':
     constant_pars = util.get_parameters()
 
     # samples to approximate the continuous demands distributions as discrete
-    # (used in EEV and TS)
     samples = util.draw_samples(args.samples, constant_pars,
                                 asint=args.intvars, seed=args.seed)
 
