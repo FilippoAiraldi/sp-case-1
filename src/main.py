@@ -10,16 +10,16 @@ def point_a(pars: Dict[str, np.ndarray],
     '''Runs computations for points a (EV, EEV and TS).'''
     # compute the EV solution
     util.print_title('Expected Value')
-    EV_f, EV_sol = models.optimize_EV(
+    EV_obj, EV_vars1, EV_vars2 = models.optimize_EV(
         pars, intvars=args.intvars, verbose=args.verbose)
-    print(f'EV = {EV_f:.3f}')
-    for var, value in EV_sol.items():
+    print(f'EV = {EV_obj:.3f}')
+    for var, value in (EV_vars1 | EV_vars2).items():
         print(f'{var} = \n', value)
 
     # compute EEV solution
     util.print_title('Expected result of Expected Value')
     EEV_fs = models.optimize_EEV(
-        pars, EV_sol, samples, intvars=args.intvars, verbose=args.verbose)
+        pars, EV_vars1, samples, intvars=args.intvars, verbose=args.verbose)
     print(f'EEV = {np.mean(EEV_fs):.3f}',
           f'({samples.shape[0] - len(EEV_fs)} scenarios were infeasible)')
 
@@ -45,7 +45,7 @@ if __name__ == '__main__':
                         help='Use integer variables in the optimization; '
                         'otherwise, variables are continuous.')
     parser.add_argument('-v', '--verbose', type=int, default=0,
-                        help='Verbosity of Gurobi output')
+                        choices=[0, 1, 2], help='Verbosity of Gurobi output')
     args = parser.parse_args()
 
     # set other options
