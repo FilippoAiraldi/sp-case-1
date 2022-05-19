@@ -40,11 +40,8 @@ def point_a(pars: Dict[str, np.ndarray],
     for var, value in TS_vars1.items():
         print(f'{var} = \n', value)
 
-    # assess TS solution quality via MRP
+    # assess TS quality via MRP
     # ...
-
-    # compute VSS
-    VSS = EEV_obj - TS_obj
 
     # compute WS
     util.print_title('Wait-and-See')
@@ -53,8 +50,13 @@ def point_a(pars: Dict[str, np.ndarray],
         pars, samples, intvars=args.intvars, verbose=args.verbose)
     WS_obj = np.mean(WS_objs)
 
-    print(f'EEV = {WS_obj:.3f}',
+    print(f'WS = {WS_obj:.3f}',
           f'({samples.shape[0] - len(WS_objs)} scenarios were infeasible)')
+
+    # compute VSS and EVPI
+    VSS = EEV_obj - TS_obj
+    EVPI = TS_obj - WS_obj
+    print('VSS =', VSS, '- EVPI =', EVPI)
 
     return
 

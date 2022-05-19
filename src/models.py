@@ -365,7 +365,7 @@ def optimize_EEV(pars: Dict[str, np.ndarray],
     # optimization, as it will be fixed with lb=ub
     demands = add_2nd_stage_constraints(mdl, pars, EV_vars1, vars2)
 
-    # solve each scenarion
+    # solve each scenario
     results = []
     S = samples.shape[0]  # number of scenarios
     for i in tqdm(range(S), total=S, desc='solving EEV'):
@@ -383,127 +383,115 @@ def optimize_TS(pars: Dict[str, np.ndarray],
                 samples: np.ndarray,
                 intvars: bool = False,
                 verbose: int = 0) -> Tuple[float, Dict[str, np.ndarray]]:
+    '''
+    Computes the approximated Two-stage Recourse Model, where the continuous 
+    distribution is discretazed via sampling.
 
+    Parameters
+    ----------
+    pars : dict[str, np.ndarray]
+        Dictionary containing the optimization problem parameters.
+    samples : np.ndarray
+        Samples approximating the continuous distribution to a discrete one.
+    intvars : bool, optional
+        Some of the variables are constrained to integers. Otherwise, they are 
+        continuous.
+    verbose : int, optional
+        Verbosity level of Gurobi model. Defaults to 0, i.e., no verbosity.
+
+    Returns
+    -------
+    obj : float
+        Value of the objective function at the optimal point.
+    solution : dict[str, np.ndarray]
+        Dictionary containing the value of 1st stage variable at the optimum.
+    '''
     # get the number of scenarios
     S = samples.shape[0]
 
     # create large scale deterministic equivalent problem
-    lsde = gb.Model(name='LSDE')
+    mdl = gb.Model(name='LSDE')
     if verbose < 1:
-        lsde.Params.LogToConsole = 0
+        mdl.Params.LogToConsole = 0
 
-    # create 1s stage variables
-    vars1 = add_1st_stage_variables(lsde, pars, intvars=intvars)
+    # create 1st stage variables
+    vars1 = add_1st_stage_variables(mdl, pars, intvars=intvars)
 
     # create one set of 2nd stage variables per scenario
     vars2 = [
-        add_2nd_stage_variables(lsde, pars, intvars=intvars) for _ in range(S)
+        add_2nd_stage_variables(mdl, pars, intvars=intvars) for _ in range(S)
     ]
 
     # set objective
     obj1 = get_1st_stage_objective(pars, vars1)
     objs2 = [get_2nd_stage_objective(pars, var2) for var2 in vars2]
-    lsde.setObjective(obj1 + (1 / S) * gb.quicksum(objs2), GRB.MINIMIZE)
+    mdl.setObjective(obj1 + (1 / S) * gb.quicksum(objs2), GRB.MINIMIZE)
 
     # set constraints
-    add_1st_stage_constraints(lsde, pars, vars1)
+    add_1st_stage_constraints(mdl, pars, vars1)
     for s in range(S):
-        add_2nd_stage_constraints(lsde, pars, vars1, vars2[s], samples[s])
+        add_2nd_stage_constraints(mdl, pars, vars1, vars2[s], samples[s])
 
     # solve
-    lsde.optimize()
+    mdl.optimize()
 
     # return the solution
     convert = (lambda o: o.astype(int)) if intvars else (lambda o: o)
     sol1 = {name: convert(var.X) for name, var in vars1.items()}
-    return lsde.ObjVal, sol1
+    return mdl.ObjVal, sol1
 
-    # n, s = pars['n'], pars['s']
 
-    # # create master problem
-    # master = gb.Model(name='Master')
-    # if verbose < 2:
-    #     master.Params.LogToConsole = 0
+def optimize_WS(pars: Dict[str, np.ndarray],
+                samples: np.ndarray,
+                intvars: bool = False,
+                verbose: int = 0) -> List[float]:
+    '''
+    Computes the Wait-and-See solution.
 
-    # # create master's variables (only 1st stage, and epigraph theta)
-    # master_vars = add_variables(master, pars, stage2=False, intvars=intvars)
-    # master_vars['theta'] = master.addVar(lb=1e3, name='theta')
+    Parameters
+    ----------
+    pars : dict[str, np.ndarray]
+        Dictionary containing the optimization problem parameters.
+    samples : np.ndarray
+        Samples approximating the continuous distribution to a discrete one.
+    intvars : bool, optional
+        Some of the variables are constrained to integers. Otherwise, they are 
+        continuous.
+    verbose : int, optional
+        Verbosity level of Gurobi model. Defaults to 0, i.e., no verbosity.
 
-    # # set master's objective
-    # obj1, _ = get_objective(pars, master_vars, stage2=False)
-    # master.setObjective(obj1 + master_vars['theta'], GRB.MINIMIZE)
+    Returns
+    -------
+    objs : list[float]
+        A list with all the objectives for each sample.
+    '''
+    # create the wait-and-see model
+    mdl = gb.Model(name='LSDE')
+    if verbose < 1:
+        mdl.Params.LogToConsole = 0
 
-    # # set master's constraints (no subgradient constraints at start)
-    # add_1st_stage_constraints(master, pars, master_vars)
+    # create 1st and 2nd stage variables
+    vars1 = add_1st_stage_variables(mdl, pars, intvars=intvars)
+    vars2 = add_2nd_stage_variables(mdl, pars, intvars=intvars)
 
-    # # create (generic) subproblem
-    # sub = gb.Model(name='Subproblem')
-    # if verbose < 2:
-    #     sub.Params.LogToConsole = 0
+    # set objective (now we optimize over vars1 as well, whereas in EEV we
+    # used the EV solution)
+    mdl.setObjective(get_1st_stage_objective(pars, vars1) +
+                     get_2nd_stage_objective(pars, vars2), GRB.MINIMIZE)
 
-    # # create subproblem's variables (only 2nd stage + a fictitious variable X)
-    # sub_vars = add_variables(sub, pars, stage1=False, intvars=intvars)
-    # sub_vars['X'] = sub.addMVar((pars['n'], pars['s']), lb=0, ub=0, name='X')
+    # set constraints
+    add_1st_stage_constraints(mdl, pars, vars1)
+    demands = add_2nd_stage_constraints(mdl, pars, vars1, vars2)
 
-    # # set subproblem's objective
-    # _, obj2 = get_objective(pars, sub_vars, stage1=False)
-    # sub.setObjective(obj2, GRB.MINIMIZE)
+    # solve each scenario
+    results = []
+    S = samples.shape[0]  # number of scenarios
+    for i in tqdm(range(S), total=S, desc='solving WS'):
+        # set demands to the i-th sample
+        fix_var(demands, samples[i])
 
-    # # add 2nd stage constraints. Use a fictitious variables as a parameter
-    # sub_vars['demands'] = add_2nd_stage_constraints(sub, pars, sub_vars)
-
-    # # get the number of scenarios
-    # S = samples.shape[0]
-
-    # # prepare a container for saving the dual solutions and grab the dual cons
-    # sub.update()
-    # cons = sub.getConstrs()
-
-    # # start the L-shape algorithm
-    # for iter in tqdm(range(max_iter), total=max_iter, desc='L-shape  '):
-    #     # solve master problem and grab variable values
-    #     master.optimize()
-    #     master_vars_t = {name: var.X for name, var in master_vars.items()}
-
-    #     # for each scenario, solve subproblem
-    #     Q = 0.0  # averages of Q(x_t)
-    #     lam_avg = np.zeros((n, s), dtype=float)  # averages of dual variables
-    #     for k in tqdm(range(S), total=S, desc='Scenarios', leave=False):
-    #         # set demands to i-th sample, and X to current solution x_t
-    #         fix_var(sub_vars['X'], master_vars_t['X'])
-    #         fix_var(sub_vars['demands'], samples[k])
-
-    #         # run optimization and save its result
-    #         sub.optimize()
-    #         lam = np.array(sub.getAttr(GRB.Attr.Pi, cons)).reshape(n, s)
-    #         lam_avg += (lam - lam_avg) / (k + 1)
-    #         Q += (sub.ObjVal - Q) / (k + 1)
-    #         # (lambdas * (samples - master_vars_t['X'])).sum() / S
-
-    #     # check if converged
-    #     gap = Q - master_vars_t['theta']
-    #     if verbose > 0:
-    #         print(f'iteration {iter}: gap = {gap}')
-    #     if gap < tol:
-    #         break
-
-    #     # compute subgradients (in vector form, T is identity, which means that
-    #     # the subgradient is minus the average dual var)
-    #     a_bar = -lam_avg
-
-    #     # add subgradient inequalities to the master problem
-    #     for i, t in product(range(n), range(s)):
-    #         a = a_bar[i, t]
-    #         b = Q - a * master_vars_t['X'][i, t]
-    #         master.addLConstr(
-    #             master_vars['theta'] >= a * master_vars['X'][i, t] + b)
-    #     master.addLConstr(master_vars['theta'] >= Q)
-    #     # other vars (U, Z+, Z-) should be >= Q (since a_it = 0)
-
-    # # convert variables to int if requested
-    # convert = (lambda o: o.astype(int)) if intvars else (lambda o: o)
-    # optimal_obj = master.ObjVal  # last master solution
-    # solution = {
-    #     name: convert(var.X) for name, var in master_vars.items()
-    # }
-    # return optimal_obj, solution
+        # run optimization and save its result
+        mdl.optimize()
+        if mdl.Status != GRB.INFEASIBLE:
+            results.append(mdl.ObjVal)
+    return results
