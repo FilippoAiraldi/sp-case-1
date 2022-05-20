@@ -5,8 +5,8 @@ import time
 from typing import Dict, Any
 
 
-def point_a(pars: Dict[str, np.ndarray], args) -> Dict[str, Any]:
-    '''Runs computations for points a (EV, EEV and TS).'''
+def run(pars: Dict[str, np.ndarray], args) -> Dict[str, Any]:
+    '''Runs computations.'''
     # draw samples to approximate continuous demand distributions as discrete
     samples = util.draw_samples(args.samples, pars,
                                 asint=args.intvars, seed=args.seed)
@@ -29,17 +29,18 @@ def point_a(pars: Dict[str, np.ndarray], args) -> Dict[str, Any]:
 
     # compute TS
     util.print_title('Two-stage Model')
-    TS_obj, TS_vars1 = models.optimize_TS(pars, samples,
-                                          intvars=args.intvars,
-                                          verbose=args.verbose)
-    print(f'TS = {TS_obj:.3f}')
+    TS_obj, TS_vars1, purchase_prob = models.optimize_TS(pars, samples,
+                                                         intvars=args.intvars,
+                                                         verbose=args.verbose)
+    print(f'TS = {TS_obj:.3f} / purchase prob = {purchase_prob}')
     for var, value in TS_vars1.items():
         print(f'{var} = \n', value)
 
     # assess TS quality via MRP
     CI = models.run_MRP(pars, TS_vars1, sample_size=args.samples,
                         alpha=args.alpha, replicas=args.replicas,
-                        intvars=args.intvars, verbose=args.verbose)
+                        intvars=args.intvars, verbose=args.verbose, 
+                        seed=args.seed)
     print('Bound on optimality gap =', CI)
 
     # compute WS
@@ -55,6 +56,7 @@ def point_a(pars: Dict[str, np.ndarray], args) -> Dict[str, Any]:
     EVPI = TS_obj - WS_obj
     print('VSS =', VSS, '- EVPI =', EVPI)
 
+    # return the results
     return {
         'EV': {'obj': EV_obj, 'sol': EV_vars1 | EV_vars2},
         'EEV': EEV_obj,
@@ -62,28 +64,9 @@ def point_a(pars: Dict[str, np.ndarray], args) -> Dict[str, Any]:
         'MRP_CI': CI,
         'WS': WS_obj,
         'VSS': VSS,
-        'EVPI': EVPI
+        'EVPI': EVPI,
+        'purchase probability': purchase_prob
     }
-
-
-def point_b(): pass
-
-
-def point_c(pars: Dict[str, np.ndarray],
-            TS_sol: Dict[str, np.ndarray], args) -> Dict[str, float]:
-    '''Runs computations for points c.'''
-    # compute the probability of an outside purchase under the TS solution.
-    # Of course, sample enough samples to approximate the demands.
-
-    util.print_title('Outside Purchase Probability')
-    prob = models.compute_purchase_probability(
-        pars, TS_sol, args.samples, intvars=args.intvars, verbose=args.verbose)
-    print('With a sample size of', args.samples, '- probability =', prob)
-    return {'prob': prob}
-
-
-def point_d(): pass
-def point_e(): pass
 
 
 if __name__ == '__main__':
@@ -94,10 +77,8 @@ if __name__ == '__main__':
     starttime = time.process_time()
 
     # run points
-    results_a = point_a(pars=constant_pars, args=args)
-    # ... point b ...
-    results_c = point_c(constant_pars, results_a['TS']['sol'], args)
+    results = run(pars=constant_pars, args=args)
 
     # save results
     util.save_results(execution_time=time.process_time() - starttime,
-                      args=args.__dict__, a=results_a, c=results_c)
+                      args=args.__dict__, results=results)

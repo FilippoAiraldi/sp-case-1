@@ -148,6 +148,11 @@ def print_title(title: str) -> None:
           sep='\n')
 
 
+var2val = np.vectorize(
+    lambda var: var.X, otypes=[float],
+    doc='Converts an array of variables to an array of their values.')
+
+
 class NumpyArrayEncoder(JSONEncoder):
     '''Custom class to serialize numpy arrays in a json.'''
 
