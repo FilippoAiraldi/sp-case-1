@@ -22,7 +22,7 @@ def parse_args():
     parser.add_argument('-a', '--alpha', type=float, default=0.95,
                         metavar='(0-1)', help='MRP Confidence level.')
     parser.add_argument('-r', '--replicas', type=int, default=30,
-                        help='Number of replicas for MRP and sens. analysis.')
+                        help='Number of replicas for MRP.')
     parser.add_argument('-lf', '--lab_factors', type=str, 
                         default='[.8, 1, 1.2]',
                         help='Factors for the labor sensitivity analysis. '

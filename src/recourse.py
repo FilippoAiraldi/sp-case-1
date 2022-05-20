@@ -726,7 +726,6 @@ def labor_sensitivity_analysis(pars: Dict[str, np.ndarray],
 def dep_sensitivity_analysis(pars: Dict[str, np.ndarray],
                              samplesize: int,
                              factors: List[float],
-                             replicas: int = 30,
                              intvars: bool = False,
                              verbose: int = 0,
                              seed: int = 0) -> np.ndarray:
@@ -744,8 +743,6 @@ def dep_sensitivity_analysis(pars: Dict[str, np.ndarray],
         discrete one.
     factors : list[float]
         A list of factors for which the TS solution sensitivity is computed.
-    replicas : int, optional
-        Number of replicas over which to average the results.
     intvars : bool, optional
         Some of the variables are constrained to integers. Otherwise, they are 
         continuous.
@@ -825,8 +822,8 @@ def dep_sensitivity_analysis(pars: Dict[str, np.ndarray],
 
     # solve TS for each combination of crosscorrelation
     results = {}
-    for _, i, j in tqdm(product(range(replicas), range(L), range(L)),
-                     total=replicas * L**2, desc='sensitivity analysis'):
+    for i, j in tqdm(product(range(L), range(L)),
+                     total=L**2, desc='sensitivity analysis'):
         # draw a sample from a multivariate normal with the covarM
         sample = rng.multivariate_normal(meanM, covarM[i, j], size=S)
         sample = sample.reshape(S, n, s)
@@ -838,8 +835,5 @@ def dep_sensitivity_analysis(pars: Dict[str, np.ndarray],
 
         # solve and save (averaging over the number of replications)
         mdl.optimize()
-        if (F[i], F[j]) not in results:
-            results[(F[i], F[j])] = mdl.ObjVal / replicas    
-        else:
-            results[(F[i], F[j])] += mdl.ObjVal / replicas
+        results[(F[i], F[j])] = mdl.ObjVal
     return results, np.array(list(results.values())).reshape(L, L)
