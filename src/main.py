@@ -5,7 +5,7 @@ import time
 from typing import Dict, Any
 
 
-def run(pars: Dict[str, np.ndarray], args) -> Dict[str, Any]:
+def run_recourse(pars: Dict[str, np.ndarray], args) -> Dict[str, Any]:
     '''Runs computations.'''
     # draw samples to approximate continuous demand distributions as discrete
     samples = util.draw_samples(args.samples, pars,
@@ -29,18 +29,17 @@ def run(pars: Dict[str, np.ndarray], args) -> Dict[str, Any]:
 
     # compute TS
     util.print_title('Two-stage Model')
-    TS_obj, TS_vars1, purchase_prob = recourse.optimize_TS(pars, samples,
-                                                         intvars=args.intvars,
-                                                         verbose=args.verbose)
+    TS_obj, TS_vars1, purchase_prob = recourse.optimize_TS(
+        pars, samples, intvars=args.intvars, verbose=args.verbose)
     print(f'TS = {TS_obj:.3f} / purchase prob = {purchase_prob}')
     for var, value in TS_vars1.items():
         print(f'{var} = \n', value)
 
     # assess TS quality via MRP
     CI = recourse.run_MRP(pars, TS_vars1, sample_size=args.samples,
-                        alpha=args.alpha, replicas=args.replicas,
-                        intvars=args.intvars, verbose=args.verbose, 
-                        seed=args.seed)
+                          alpha=args.alpha, replicas=args.replicas,
+                          intvars=args.intvars, verbose=args.verbose,
+                          seed=args.seed)
     print('Bound on optimality gap =', CI)
 
     # compute WS
@@ -55,6 +54,14 @@ def run(pars: Dict[str, np.ndarray], args) -> Dict[str, Any]:
     VSS = EEV_obj - TS_obj
     EVPI = TS_obj - WS_obj
     print('VSS =', VSS, '- EVPI =', EVPI)
+
+    # compute Sensitivity Analysis w.r.t. labour increase upper bound and cost
+    util.print_title('Sensitivity Analysis')
+    _, labor_sens = recourse.labor_sensitivity_analysis(pars, samples,
+                                                        args.factors,
+                                                        intvars=args.intvars,
+                                                        verbose=args.verbose)
+    print(f'Sensitivity = {labor_sens}')
 
     # return the results
     return {
@@ -77,7 +84,8 @@ if __name__ == '__main__':
 
     # run points
     starttime = time.process_time()
-    results = run(pars=constant_pars, args=args)
+    results = run_recourse(pars=constant_pars, args=args)
+    # ...run_chance...
 
     # save results
     util.save_results(execution_time=time.process_time() - starttime,

@@ -13,6 +13,9 @@ from typing import Dict
 def parse_args():
     '''Parses the command line arguments'''
     parser = argparse.ArgumentParser()
+    parser.add_argument('-iv', '--intvars', action='store_true',
+                        help='Use integer variables in the optimization; '
+                        'otherwise, variables are continuous.')
     parser.add_argument('-s', '--samples', type=int, default=int(1e5),
                         help='Number of LHS samples to approximate the '
                         'recourse model.')
@@ -20,16 +23,22 @@ def parse_args():
                         metavar='(0-1)', help='MRP Confidence level.')
     parser.add_argument('-r', '--replicas', type=int, default=30,
                         help='MRP number of replicas.')
-    parser.add_argument('-iv', '--intvars', action='store_true',
-                        help='Use integer variables in the optimization; '
-                        'otherwise, variables are continuous.')
+    parser.add_argument('-lf', '--lab_factors', type=str, default='[.8, 1, 1.2]',
+                        help='Factors for the labor sensitivity analysis. '
+                             'Example: "[.8, 1, 1.2]".')
     parser.add_argument('--seed', type=int, default=None,
                         help='RNG seed.')
     parser.add_argument('-v', '--verbose', type=int, default=0,
                         choices=[0, 1, 2], help='Verbosity of Gurobi output')
     args = parser.parse_args()
-    ok = args.samples > 0 and 0 < args.alpha < 1 and args.replicas > 0
-    assert ok, 'invalid arguments'
+
+    # do some checks
+    args.factors = eval(args.factors)  # convert string to list
+    ok = all(isinstance(f, (int, float)) for f in args.factors)
+    assert ok, 'argument "factors" must contain numbers'
+    assert args.samples > 0, 'argument "samples" must be positive'
+    assert 0 < args.alpha < 1, 'argument "alpha" must be in range (0, 1)'
+    assert args.replicas > 0, 'argument "replicas" must be positive'
     return args
 
 

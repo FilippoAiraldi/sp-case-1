@@ -603,3 +603,121 @@ def optimize_WS(pars: Dict[str, np.ndarray],
         if mdl.Status != GRB.INFEASIBLE:
             results.append(mdl.ObjVal)
     return results
+
+
+def labor_sensitivity_analysis(pars: Dict[str, np.ndarray],
+                               samples: np.ndarray,
+                               factors: List[float],
+                               intvars: bool = False,
+                               verbose: int = 0) -> np.ndarray:
+    '''
+    Computes the sensitivity analysis of the TS solution with respect to 
+    variations to the labour extra capacity increase upper bound and cost. 
+    These two parameters are changed by some factor, and the new TS solution 
+    computed.
+
+    Parameters
+    ----------
+    pars : dict[str, np.ndarray]
+        Dictionary containing the optimization problem parameters.
+    samples : np.ndarray
+        Samples approximating the continuous distribution to a discrete one.
+    factors : list[float]
+        A list of factors for which the TS solution sensitivity is computed.
+    intvars : bool, optional
+        Some of the variables are constrained to integers. Otherwise, they are 
+        continuous.
+    verbose : int, optional
+        Verbosity level of Gurobi model. Defaults to 0, i.e., no verbosity.
+
+    Returns
+    -------
+    results : dict[tuple[float, float], float]
+        A dictionary containing for each combination of two modification 
+        factors the corresponding TS objective value.
+    grid : np.ndarray
+        The same data, but arranged in a grid.
+    '''
+
+    # get all the combinations of factors
+    L = len(factors)
+    F1, F2 = np.meshgrid(factors, factors)
+    F1 = F1.T.astype(float).flatten()
+    F2 = F2.T.astype(float).flatten()
+
+    # instead of having UB and C2 as constants, we create two variables and fix
+    # them to different values for each factor combination
+    UBs = np.tile(pars['UB'], (L**2, 1, 1)).astype(float)
+    C2s = np.tile(pars['C2'], (L**2, 1, 1)).astype(float)
+
+    # modify each UB and C2 on their corresponding couple of factors. Modify
+    # only labor, i.e., last row
+    UBs[:, -1] *= F1[:, None]
+    C2s[:, -1] *= F2[:, None]
+
+    ####################### CODE ALMOST IDENTICAL TO TS #######################
+    # get the number of scenarios
+    S = samples.shape[0]
+    m, s = pars['m'], pars['s']
+
+    # create large scale deterministic equivalent problem
+    mdl = gb.Model(name='LSDE')
+    if verbose < 1:
+        mdl.Params.LogToConsole = 0
+
+    # now, replace the original UB and C2 with some variables
+    pars['UB'] = np.array(mdl.addVars(m, s, name='UB').values()).reshape(m, s)
+    pars['C2'] = np.array(mdl.addVars(m, s, name='C2').values()).reshape(m, s)
+
+    # create 1st stage variables and 2nd stage variables, one per scenario
+    vars1 = add_1st_stage_variables(mdl, pars, intvars=intvars)
+    vars2 = add_2nd_stage_variables(mdl, pars, scenarios=S, intvars=intvars)
+
+    # set objective
+    obj1 = get_1st_stage_objective(pars, vars1)
+    obj2 = get_2nd_stage_objective(pars, vars2)
+    mdl.setObjective(obj1 + obj2, GRB.MINIMIZE)
+
+    # set constraints
+    add_1st_stage_constraints(mdl, pars, vars1)
+    add_2nd_stage_constraints(mdl, pars, vars1, vars2, samples)
+
+    # solve TS for each modification combination
+    results = {}
+    for i in tqdm(range(L**2), total=L**2, desc='sensitivity analysis'):
+        # fix UB and C2 to their modified counterpart
+        fix_var(mdl, pars['UB'], UBs[i])
+        fix_var(mdl, pars['C2'], C2s[i])
+
+        # solve and save
+        mdl.optimize()
+        results[(F1[i], F2[i])] = mdl.ObjVal
+    return results, np.array(list(results.values())).reshape(L, L)
+
+    ################ MULTIPROCESSING CODE - NOT REALLY FASTER #################
+    # from multiprocessing import Pool
+    # from copy import deepcopy
+    # from functools import partial
+
+    # # get all the combinations
+    # L = len(factors)
+    # F1, F2 = np.meshgrid(factors, factors)
+
+    # # for each combinations, modify the extra capacity upper bound and cost
+    # pars_modified = []
+    # for i, j in itertools.product(range(L), range(L)):
+    #     pars_ = deepcopy(pars)
+    #     pars_['UB'][-1] = pars_['UB'][-1] * F1[i, j]  # last row is labour
+    #     pars_['C2'][-1] = pars_['C2'][-1] * F2[i, j]  # last row is labour
+    #     pars_modified.append(pars_)
+
+    # # compute the TS solution for each new set of parameters in parallel
+    # f = partial(optimize_TS, samples=samples, intvars=intvars,
+    #             verbose=verbose - 1)
+    # results = []
+    # p = Pool()
+    # with p:
+    #     for r in tqdm(p.imap(f, pars_modified), total=L**2,
+    #                   desc='sensivitiy analysis'):
+    #         results.append(r[0])
+    # return np.array(results).reshape(L, L)
