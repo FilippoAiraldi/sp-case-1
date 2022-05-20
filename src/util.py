@@ -23,7 +23,8 @@ def parse_args():
                         metavar='(0-1)', help='MRP Confidence level.')
     parser.add_argument('-r', '--replicas', type=int, default=30,
                         help='MRP number of replicas.')
-    parser.add_argument('-lf', '--lab_factors', type=str, default='[.8, 1, 1.2]',
+    parser.add_argument('-lf', '--lab_factors', type=str, 
+                        default='[.8, 1, 1.2]',
                         help='Factors for the labor sensitivity analysis. '
                              'Example: "[.8, 1, 1.2]".')
     parser.add_argument('--seed', type=int, default=None,
@@ -33,9 +34,9 @@ def parse_args():
     args = parser.parse_args()
 
     # do some checks
-    args.factors = eval(args.factors)  # convert string to list
-    ok = all(isinstance(f, (int, float)) for f in args.factors)
-    assert ok, 'argument "factors" must contain numbers'
+    args.lab_factors = eval(args.lab_factors)  # convert string to list
+    ok = all(isinstance(f, (int, float)) for f in args.lab_factors)
+    assert ok, 'argument "lab_factors" must contain numbers'
     assert args.samples > 0, 'argument "samples" must be positive'
     assert 0 < args.alpha < 1, 'argument "alpha" must be in range (0, 1)'
     assert args.replicas > 0, 'argument "replicas" must be positive'

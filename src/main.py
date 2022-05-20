@@ -58,7 +58,7 @@ def run_recourse(pars: Dict[str, np.ndarray], args) -> Dict[str, Any]:
     # compute Sensitivity Analysis w.r.t. labour increase upper bound and cost
     util.print_title('Sensitivity Analysis')
     _, labor_sens = recourse.labor_sensitivity_analysis(pars, samples,
-                                                        args.factors,
+                                                        args.lab_factors,
                                                         intvars=args.intvars,
                                                         verbose=args.verbose)
     print(f'Sensitivity = {labor_sens}')
