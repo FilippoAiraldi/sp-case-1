@@ -254,7 +254,7 @@ def add_2nd_stage_constraints(mdl: gb.Model,
 
     # in the first period, zero surplus is assumed
     for i, t in product(range(n), range(s)):
-        Ym_previous = 0 if t == 1 else Ym[i, t - 1]
+        Ym_previous = 0 if t == 0 else Ym[i, t - 1]
         mdl.addLConstr(
             X[i, t] + Ym_previous + Yp[i, t] - Ym[i, t] == demands[i, t],
             name=f'con_demand_{i}_{t}')
