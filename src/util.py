@@ -22,11 +22,15 @@ def parse_args():
     parser.add_argument('-a', '--alpha', type=float, default=0.95,
                         metavar='(0-1)', help='MRP Confidence level.')
     parser.add_argument('-r', '--replicas', type=int, default=30,
-                        help='MRP number of replicas.')
+                        help='Number of replicas for MRP and sens. analysis.')
     parser.add_argument('-lf', '--lab_factors', type=str, 
                         default='[.8, 1, 1.2]',
                         help='Factors for the labor sensitivity analysis. '
                              'Example: "[.8, 1, 1.2]".')
+    parser.add_argument('-df', '--dep_factors', type=str, 
+                        default='[.01, 0.1, 0.2]',
+                        help='Factors for the demand dependence sensitivity '
+                             ' analysis. Example: "[.01, 0.1, 0.2]".')
     parser.add_argument('--seed', type=int, default=None,
                         help='RNG seed.')
     parser.add_argument('-v', '--verbose', type=int, default=0,
@@ -35,8 +39,11 @@ def parse_args():
 
     # do some checks
     args.lab_factors = eval(args.lab_factors)  # convert string to list
-    ok = all(isinstance(f, (int, float)) for f in args.lab_factors)
-    assert ok, 'argument "lab_factors" must contain numbers'
+    ok = all(isinstance(f, (int, float)) and f >= 0 for f in args.lab_factors)
+    assert ok, 'argument "lab_factors" must contain nonnegative numbers'
+    args.dep_factors = eval(args.dep_factors)  # convert string to list
+    ok = all(isinstance(f, (int, float)) and f >= 0 for f in args.dep_factors)
+    assert ok, 'argument "dep_factors" must contain nonnegative numbers'
     assert args.samples > 0, 'argument "samples" must be positive'
     assert 0 < args.alpha < 1, 'argument "alpha" must be in range (0, 1)'
     assert args.replicas > 0, 'argument "replicas" must be positive'

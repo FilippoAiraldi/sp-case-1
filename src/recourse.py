@@ -2,6 +2,7 @@ import numpy as np
 from scipy import stats
 import gurobipy as gb
 from gurobipy import GRB
+from itertools import product
 from tqdm import tqdm
 from typing import Union, Dict, Tuple, List, Optional
 import util
@@ -640,20 +641,18 @@ def labor_sensitivity_analysis(pars: Dict[str, np.ndarray],
     '''
 
     # get all the combinations of factors
-    L = len(factors)
-    F1, F2 = np.meshgrid(factors, factors)
-    F1 = F1.T.astype(float).flatten()
-    F2 = F2.T.astype(float).flatten()
+    F = np.array(factors).flatten()
+    L = F.size
 
     # instead of having UB and C2 as constants, we create two variables and fix
     # them to different values for each factor combination
-    UBs = np.tile(pars['UB'], (L**2, 1, 1)).astype(float)
-    C2s = np.tile(pars['C2'], (L**2, 1, 1)).astype(float)
+    UBs = np.tile(pars['UB'], (L, 1, 1)).astype(float)
+    C2s = np.tile(pars['C2'], (L, 1, 1)).astype(float)
 
     # modify each UB and C2 on their corresponding couple of factors. Modify
     # only labor, i.e., last row
-    UBs[:, -1] *= F1[:, None]
-    C2s[:, -1] *= F2[:, None]
+    UBs[:, -1] *= F[:, None]
+    C2s[:, -1] *= F[:, None]
 
     ####################### CODE ALMOST IDENTICAL TO TS #######################
     # get the number of scenarios
@@ -684,14 +683,15 @@ def labor_sensitivity_analysis(pars: Dict[str, np.ndarray],
 
     # solve TS for each modification combination
     results = {}
-    for i in tqdm(range(L**2), total=L**2, desc='sensitivity analysis'):
+    for i, j in tqdm(product(range(L), range(L)),
+                     total=L**2, desc='sensitivity analysis'):
         # fix UB and C2 to their modified counterpart
         fix_var(mdl, pars['UB'], UBs[i])
-        fix_var(mdl, pars['C2'], C2s[i])
+        fix_var(mdl, pars['C2'], C2s[j])
 
         # solve and save
         mdl.optimize()
-        results[(F1[i], F2[i])] = mdl.ObjVal
+        results[(F[i], F[j])] = mdl.ObjVal
     return results, np.array(list(results.values())).reshape(L, L)
 
     ################ MULTIPROCESSING CODE - NOT REALLY FASTER #################
@@ -721,3 +721,125 @@ def labor_sensitivity_analysis(pars: Dict[str, np.ndarray],
     #                   desc='sensivitiy analysis'):
     #         results.append(r[0])
     # return np.array(results).reshape(L, L)
+
+
+def dep_sensitivity_analysis(pars: Dict[str, np.ndarray],
+                             samplesize: int,
+                             factors: List[float],
+                             replicas: int = 30,
+                             intvars: bool = False,
+                             verbose: int = 0,
+                             seed: int = 0) -> np.ndarray:
+    '''
+    Computes the sensitivity analysis of the TS solution with respect to 
+    the inter-product and inter-period dependence. These two correlations are 
+    changed by some factor, and the new TS solution computed.
+
+    Parameters
+    ----------
+    pars : dict[str, np.ndarray]
+        Dictionary containing the optimization problem parameters.
+    samplesize : int
+        Size of the samples for approximating the continuous distribution to a 
+        discrete one.
+    factors : list[float]
+        A list of factors for which the TS solution sensitivity is computed.
+    replicas : int, optional
+        Number of replicas over which to average the results.
+    intvars : bool, optional
+        Some of the variables are constrained to integers. Otherwise, they are 
+        continuous.
+    verbose : int, optional
+        Verbosity level of Gurobi model. Defaults to 0, i.e., no verbosity.
+    seed : int, optional
+        Random number generator seed.
+
+    Returns
+    -------
+    results : dict[tuple[float, float], float]
+        A dictionary containing for each combination of two correlation factors 
+        the corresponding TS objective value.
+    grid : np.ndarray
+        The same data, but arranged in a grid.
+    '''
+
+    # first of all, append 0 so that we also test the effect of one correlation
+    # without the other
+    if 0 not in factors:
+        factors.insert(0, 0)
+    F = np.array(factors).flatten()
+    L = F.size
+
+    # grab some parameters
+    n, s = pars['n'], pars['s']
+    meanM = pars['demand_mean'].flatten()
+    stds = pars['demand_std']
+
+    # build the multivariate normal covariance matrix for each combination of
+    # the factors
+    covarM = np.empty((L, L, n, s, n, s))
+    for f1, f2, i1, t1, i2, t2 in product(*[range(d) for d in covarM.shape]):
+        # self covariance
+        if i1 == i2 and t1 == t2:
+            factor = 1
+        # inter-product correlation in the same period
+        elif t1 == t2:
+            factor = F[f1]
+        # inter-period correlation for the same product
+        elif i1 == i2:
+            factor = F[f2]
+        # no correlation between different products at different periods
+        else:
+            factor = 0
+
+        # asign to matrix
+        covar = stds[i1, t1] * stds[i2, t2] * factor**2
+        covarM[f1, f2, i1, t1, i2, t2] = covar
+
+    # reshape into proper form
+    covarM = covarM.reshape(L, L, n * s, n * s)
+
+    # get the number of scenarios
+    S = samplesize
+
+    # create large scale deterministic equivalent problem
+    mdl = gb.Model(name='LSDE')
+    if verbose < 1:
+        mdl.Params.LogToConsole = 0
+
+    # create 1st stage variables and 2nd stage variables, one per scenario
+    vars1 = add_1st_stage_variables(mdl, pars, intvars=intvars)
+    vars2 = add_2nd_stage_variables(mdl, pars, scenarios=S, intvars=intvars)
+
+    # set objective
+    obj1 = get_1st_stage_objective(pars, vars1)
+    obj2 = get_2nd_stage_objective(pars, vars2)
+    mdl.setObjective(obj1 + obj2, GRB.MINIMIZE)
+
+    # set constraints
+    add_1st_stage_constraints(mdl, pars, vars1)
+    demands = add_2nd_stage_constraints(mdl, pars, vars1, vars2)
+
+    # start a random number generator
+    rng = np.random.default_rng(seed=seed)
+
+    # solve TS for each combination of crosscorrelation
+    results = {}
+    for _, i, j in tqdm(product(range(replicas), range(L), range(L)),
+                     total=replicas * L**2, desc='sensitivity analysis'):
+        # draw a sample from a multivariate normal with the covarM
+        sample = rng.multivariate_normal(meanM, covarM[i, j], size=S)
+        sample = sample.reshape(S, n, s)
+        if intvars:
+            sample = sample.astype(int)
+
+        # fix the demands to this new sample
+        fix_var(mdl, demands, sample)
+
+        # solve and save (averaging over the number of replications)
+        mdl.optimize()
+        if (F[i], F[j]) not in results:
+            results[(F[i], F[j])] = mdl.ObjVal / replicas    
+        else:
+            results[(F[i], F[j])] += mdl.ObjVal / replicas
+    return results, np.array(list(results.values())).reshape(L, L)

@@ -61,7 +61,13 @@ def run_recourse(pars: Dict[str, np.ndarray], args) -> Dict[str, Any]:
                                                         args.lab_factors,
                                                         intvars=args.intvars,
                                                         verbose=args.verbose)
-    print(f'Sensitivity = {labor_sens}')
+    # _, dp_sens = recourse.dep_sensitivity_analysis(pars, args.samples,
+    #                                                args.dep_factors,
+    #                                                args.replicas,
+    #                                                intvars=args.intvars,
+    #                                                verbose=args.verbose,
+    #                                                seed=args.seed)
+    print(f'Labor sensitivity = {labor_sens}')
 
     # return the results
     return {
