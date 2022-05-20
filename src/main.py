@@ -1,6 +1,6 @@
 import numpy as np
 import util
-import models
+import recourse
 import time
 from typing import Dict, Any
 
@@ -13,7 +13,7 @@ def run(pars: Dict[str, np.ndarray], args) -> Dict[str, Any]:
 
     # compute EV
     util.print_title('Expected Value')
-    EV_obj, EV_vars1, EV_vars2 = models.optimize_EV(
+    EV_obj, EV_vars1, EV_vars2 = recourse.optimize_EV(
         pars, intvars=args.intvars, verbose=args.verbose)
     print(f'EV = {EV_obj:.3f}')
     for var, value in (EV_vars1 | EV_vars2).items():
@@ -21,7 +21,7 @@ def run(pars: Dict[str, np.ndarray], args) -> Dict[str, Any]:
 
     # compute EEV
     util.print_title('Expected result of Expected Value')
-    EEV_objs = models.optimize_EEV(
+    EEV_objs = recourse.optimize_EEV(
         pars, EV_vars1, samples, intvars=args.intvars, verbose=args.verbose)
     EEV_obj = np.mean(EEV_objs)
     print(f'EEV = {EEV_obj:.3f}',
@@ -29,7 +29,7 @@ def run(pars: Dict[str, np.ndarray], args) -> Dict[str, Any]:
 
     # compute TS
     util.print_title('Two-stage Model')
-    TS_obj, TS_vars1, purchase_prob = models.optimize_TS(pars, samples,
+    TS_obj, TS_vars1, purchase_prob = recourse.optimize_TS(pars, samples,
                                                          intvars=args.intvars,
                                                          verbose=args.verbose)
     print(f'TS = {TS_obj:.3f} / purchase prob = {purchase_prob}')
@@ -37,7 +37,7 @@ def run(pars: Dict[str, np.ndarray], args) -> Dict[str, Any]:
         print(f'{var} = \n', value)
 
     # assess TS quality via MRP
-    CI = models.run_MRP(pars, TS_vars1, sample_size=args.samples,
+    CI = recourse.run_MRP(pars, TS_vars1, sample_size=args.samples,
                         alpha=args.alpha, replicas=args.replicas,
                         intvars=args.intvars, verbose=args.verbose, 
                         seed=args.seed)
@@ -45,7 +45,7 @@ def run(pars: Dict[str, np.ndarray], args) -> Dict[str, Any]:
 
     # compute WS
     util.print_title('Wait-and-See')
-    WS_objs = models.optimize_WS(
+    WS_objs = recourse.optimize_WS(
         pars, samples, intvars=args.intvars, verbose=args.verbose)
     WS_obj = np.mean(WS_objs)
     print(f'WS = {WS_obj:.3f}',
@@ -74,9 +74,9 @@ if __name__ == '__main__':
     np.set_printoptions(precision=3, suppress=False)
     args = util.parse_args()
     constant_pars = util.get_parameters()
-    starttime = time.process_time()
 
     # run points
+    starttime = time.process_time()
     results = run(pars=constant_pars, args=args)
 
     # save results
