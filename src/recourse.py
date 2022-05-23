@@ -435,7 +435,7 @@ def optimize_TS(pars: Dict[str, np.ndarray],
 
 
 def run_MRP(pars: Dict[str, np.ndarray],
-            solution: dict[str, np.ndarray],
+            solution: Dict[str, np.ndarray],
             sample_size: int,
             alpha: float = 0.95,
             replicas: int = 30,

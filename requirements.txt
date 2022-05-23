@@ -1,4 +1,4 @@
-gurobi==9.5.1
+gurobipy==9.5.1
 numpy==1.21.5
 scipy==1.7.3
 tqdm==4.64.0
