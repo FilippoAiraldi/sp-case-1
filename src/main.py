@@ -57,16 +57,14 @@ def run_recourse(pars: Dict[str, np.ndarray], args) -> Dict[str, Any]:
 
     # compute Sensitivity Analysis w.r.t. labour increase upper bound and cost
     util.print_title('Sensitivity Analysis')
-    _, labor_sens = recourse.labor_sensitivity_analysis(pars, samples,
-                                                        args.lab_factors,
-                                                        intvars=args.intvars,
-                                                        verbose=args.verbose)
-    _, dp_sens = recourse.dep_sensitivity_analysis(pars, args.samples,
-                                                   args.dep_factors,
-                                                   intvars=args.intvars,
-                                                   verbose=args.verbose,
-                                                   seed=args.seed)
-    print(f'Labor sensitivity = {labor_sens}')
+    labor_sens, labor_sens_mtx = recourse.labor_sensitivity_analysis(
+        pars, samples, args.lab_factors, intvars=args.intvars, 
+        verbose=args.verbose)
+    print(f'Labor sensitivity = {labor_sens_mtx}')
+    dp_sens, dp_sens_mtx = recourse.dep_sensitivity_analysis(
+        pars, args.samples, args.dep_factors, intvars=args.intvars,
+        verbose=args.verbose, seed=args.seed)
+    print(f'Demand sensitivity = {dp_sens_mtx}')
 
     # return the results
     return {
@@ -77,7 +75,9 @@ def run_recourse(pars: Dict[str, np.ndarray], args) -> Dict[str, Any]:
         'WS': WS_obj,
         'VSS': VSS,
         'EVPI': EVPI,
-        'purchase probability': purchase_prob
+        'purchase probability': purchase_prob,
+        'labor sensitivity': {str(k): v for k, v in labor_sens.items()},
+        'demand sensitivity': {str(k): v for k, v in dp_sens.items()}
     }
 
 

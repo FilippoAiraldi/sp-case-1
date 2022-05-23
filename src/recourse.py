@@ -4,6 +4,7 @@ import gurobipy as gb
 from gurobipy import GRB
 from itertools import product
 from tqdm import tqdm
+from copy import deepcopy
 from typing import Union, Dict, Tuple, List, Optional
 import util
 
@@ -509,9 +510,10 @@ def run_MRP(pars: Dict[str, np.ndarray],
 
     # start the MRP
     G = []
-    for _ in tqdm(range(replicas), total=replicas, desc='MRP iteration'):
-        # draw a sample
-        sample = util.draw_samples(S, pars, asint=intvars, seed=seed)
+    for r in tqdm(range(replicas), total=replicas, desc='MRP iteration'):
+        # draw a sample - cannot pass the same seed, otherwise the same samples
+        # will be drawn again and the CI will be zero
+        sample = util.draw_samples(S, pars, asint=intvars, seed=seed * (r + 1))
 
         # fix the problem's demands to this sample
         fix_var(mdl, demands, sample)
@@ -543,9 +545,7 @@ def run_MRP(pars: Dict[str, np.ndarray],
 
     # compute the confidence interval
     G = np.array(G)
-    G_bar = G.mean()
-    sG = np.sqrt(1 / (replicas - 1) * np.square(G - G_bar).sum())
-    sG_ = G.std(ddof=1)
+    G_bar, sG = G.mean(), G.std(ddof=1)
     eps = stats.t.ppf(alpha, replicas - 1) * sG / np.sqrt(replicas)
     return G_bar + eps
 
@@ -606,11 +606,12 @@ def optimize_WS(pars: Dict[str, np.ndarray],
     return results
 
 
-def labor_sensitivity_analysis(pars: Dict[str, np.ndarray],
-                               samples: np.ndarray,
-                               factors: List[float],
-                               intvars: bool = False,
-                               verbose: int = 0) -> np.ndarray:
+def labor_sensitivity_analysis(
+        pars: Dict[str, np.ndarray],
+        samples: np.ndarray,
+        factors: List[float],
+        intvars: bool = False,
+        verbose: int = 0) -> Tuple[Dict[Tuple[float, float], float], np.ndarray]:
     '''
     Computes the sensitivity analysis of the TS solution with respect to 
     variations to the labour extra capacity increase upper bound and cost. 
@@ -664,7 +665,9 @@ def labor_sensitivity_analysis(pars: Dict[str, np.ndarray],
     if verbose < 1:
         mdl.Params.LogToConsole = 0
 
-    # now, replace the original UB and C2 with some variables
+    # now, make a copy of the original paramters and replace the original UB
+    # and C2 with some variables
+    pars = deepcopy(pars)
     pars['UB'] = np.array(mdl.addVars(m, s, name='UB').values()).reshape(m, s)
     pars['C2'] = np.array(mdl.addVars(m, s, name='C2').values()).reshape(m, s)
 
@@ -684,7 +687,7 @@ def labor_sensitivity_analysis(pars: Dict[str, np.ndarray],
     # solve TS for each modification combination
     results = {}
     for i, j in tqdm(product(range(L), range(L)),
-                     total=L**2, desc='sensitivity analysis'):
+                     total=L**2, desc='labor sensitivity'):
         # fix UB and C2 to their modified counterpart
         fix_var(mdl, pars['UB'], UBs[i])
         fix_var(mdl, pars['C2'], C2s[j])
@@ -723,12 +726,13 @@ def labor_sensitivity_analysis(pars: Dict[str, np.ndarray],
     # return np.array(results).reshape(L, L)
 
 
-def dep_sensitivity_analysis(pars: Dict[str, np.ndarray],
-                             samplesize: int,
-                             factors: List[float],
-                             intvars: bool = False,
-                             verbose: int = 0,
-                             seed: int = 0) -> np.ndarray:
+def dep_sensitivity_analysis(
+        pars: Dict[str, np.ndarray],
+        samplesize: int,
+        factors: List[float],
+        intvars: bool = False,
+        verbose: int = 0,
+        seed: int = 0) -> Tuple[Dict[Tuple[float, float], float], np.ndarray]:
     '''
     Computes the sensitivity analysis of the TS solution with respect to 
     the inter-product and inter-period dependence. These two correlations are 
@@ -823,7 +827,7 @@ def dep_sensitivity_analysis(pars: Dict[str, np.ndarray],
     # solve TS for each combination of crosscorrelation
     results = {}
     for i, j in tqdm(product(range(L), range(L)),
-                     total=L**2, desc='sensitivity analysis'):
+                     total=L**2, desc='demand sensitivity'):
         # draw a sample from a multivariate normal with the covarM
         sample = rng.multivariate_normal(meanM, covarM[i, j], size=S)
         sample = sample.reshape(S, n, s)
