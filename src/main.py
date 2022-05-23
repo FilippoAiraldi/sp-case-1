@@ -16,7 +16,7 @@ def run_recourse(pars: Dict[str, np.ndarray], args) -> Dict[str, Any]:
     EV_obj, EV_vars1, EV_vars2 = recourse.optimize_EV(
         pars, intvars=args.intvars, verbose=args.verbose)
     print(f'EV = {EV_obj:.3f}')
-    for var, value in (EV_vars1 | EV_vars2).items():
+    for var, value in {**EV_vars1, **EV_vars2}.items():
         print(f'{var} = \n', value)
 
     # compute EEV
@@ -70,7 +70,7 @@ def run_recourse(pars: Dict[str, np.ndarray], args) -> Dict[str, Any]:
 
     # return the results
     return {
-        'EV': {'obj': EV_obj, 'sol': EV_vars1 | EV_vars2},
+        'EV': {'obj': EV_obj, 'sol': {**EV_vars1, **EV_vars2}},
         'EEV': EEV_obj,
         'TS': {'obj': TS_obj, 'sol': TS_vars1},
         'MRP_CI': CI,
