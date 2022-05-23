@@ -772,10 +772,11 @@ def dep_sensitivity_analysis(
     L = F.size
 
     # grab some parameters
+    S = samplesize
     n, s = pars['n'], pars['s']
     meanM = pars['demand_mean'].flatten()
     stds = pars['demand_std']
-
+    
     # build the multivariate normal covariance matrix for each combination of
     # the factors
     covarM = np.empty((L, L, n, s, n, s))
@@ -799,9 +800,15 @@ def dep_sensitivity_analysis(
 
     # reshape into proper form
     covarM = covarM.reshape(L, L, n * s, n * s)
-
-    # get the number of scenarios
-    S = samplesize
+    
+    # draw all the necessary samples
+    rng = np.random.default_rng(seed=seed)
+    samples = np.empty((L, L, S, n, s))
+    for i, j in product(range(L), range(L)):
+        sample = rng.multivariate_normal(meanM, covarM[i, j], size=S)
+        samples[i, j] = sample.reshape(S, n, s)
+    if intvars:
+        samples = samples.astype(int)
 
     # create large scale deterministic equivalent problem
     mdl = gb.Model(name='LSDE')
@@ -821,21 +828,12 @@ def dep_sensitivity_analysis(
     add_1st_stage_constraints(mdl, pars, vars1)
     demands = add_2nd_stage_constraints(mdl, pars, vars1, vars2)
 
-    # start a random number generator
-    rng = np.random.default_rng(seed=seed)
-
     # solve TS for each combination of crosscorrelation
     results = {}
     for i, j in tqdm(product(range(L), range(L)),
                      total=L**2, desc='demand sensitivity'):
-        # draw a sample from a multivariate normal with the covarM
-        sample = rng.multivariate_normal(meanM, covarM[i, j], size=S)
-        sample = sample.reshape(S, n, s)
-        if intvars:
-            sample = sample.astype(int)
-
-        # fix the demands to this new sample
-        fix_var(mdl, demands, sample)
+        # fix the demands to the current sample
+        fix_var(mdl, demands, samples[i, j])
 
         # solve and save (averaging over the number of replications)
         mdl.optimize()
