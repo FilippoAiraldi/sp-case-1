@@ -16,21 +16,21 @@ def parse_args():
     parser.add_argument('-iv', '--intvars', action='store_true',
                         help='Use integer variables in the optimization; '
                         'otherwise, variables are continuous.')
-    parser.add_argument('-s', '--samples', type=int, default=int(1e5),
+    parser.add_argument('-s', '--samples', type=int, default=int(1e4),
                         help='Number of LHS samples to approximate the '
                         'recourse model.')
     parser.add_argument('-a', '--alpha', type=float, default=0.95,
                         metavar='(0-1)', help='MRP Confidence level.')
     parser.add_argument('-r', '--replicas', type=int, default=30,
                         help='Number of replicas for MRP.')
-    parser.add_argument('-lf', '--lab_factors', type=str, 
+    parser.add_argument('-lf', '--lab_factors', type=str,
                         default='[.8, 1, 1.2]',
                         help='Factors for the labor sensitivity analysis. '
                              'Example: "[.8, 1, 1.2]".')
-    parser.add_argument('-df', '--dep_factors', type=str, 
-                        default='[.01, 0.1, 0.2]',
+    parser.add_argument('-df', '--dem_factors', type=str,
+                        default='[-0.1, 0, 0.1]',
                         help='Factors for the demand dependence sensitivity '
-                             ' analysis. Example: "[.01, 0.1, 0.2]".')
+                             'analysis. Example: "[-0.2, -0.1, 0, 0.1, 0.2]".')
     parser.add_argument('--seed', type=int, default=None,
                         help='RNG seed.')
     parser.add_argument('-v', '--verbose', type=int, default=0,
@@ -41,9 +41,9 @@ def parse_args():
     args.lab_factors = eval(args.lab_factors)  # convert string to list
     ok = all(isinstance(f, (int, float)) and f >= 0 for f in args.lab_factors)
     assert ok, 'argument "lab_factors" must contain nonnegative numbers'
-    args.dep_factors = eval(args.dep_factors)  # convert string to list
-    ok = all(isinstance(f, (int, float)) and f >= 0 for f in args.dep_factors)
-    assert ok, 'argument "dep_factors" must contain nonnegative numbers'
+    args.dem_factors = eval(args.dem_factors)  # convert string to list
+    ok = all(isinstance(f, (int, float)) for f in args.dem_factors)
+    assert ok, 'argument "dem_factors" must contain float or int numbers'
     assert args.samples > 0, 'argument "samples" must be positive'
     assert 0 < args.alpha < 1, 'argument "alpha" must be in range (0, 1)'
     assert args.replicas > 0, 'argument "replicas" must be positive'

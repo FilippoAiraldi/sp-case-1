@@ -764,10 +764,6 @@ def dep_sensitivity_analysis(
         The same data, but arranged in a grid.
     '''
 
-    # first of all, append 0 so that we also test the effect of one correlation
-    # without the other
-    if 0 not in factors:
-        factors.insert(0, 0)
     F = np.array(factors).flatten()
     L = F.size
 
@@ -776,7 +772,7 @@ def dep_sensitivity_analysis(
     n, s = pars['n'], pars['s']
     meanM = pars['demand_mean'].flatten()
     stds = pars['demand_std']
-    
+
     # build the multivariate normal covariance matrix for each combination of
     # the factors
     covarM = np.empty((L, L, n, s, n, s))
@@ -795,12 +791,14 @@ def dep_sensitivity_analysis(
             factor = 0
 
         # asign to matrix
-        covar = stds[i1, t1] * stds[i2, t2] * factor**2
+        covar = stds[i1, t1] * stds[i2, t2] * factor**2 * np.sign(factor)
         covarM[f1, f2, i1, t1, i2, t2] = covar
 
     # reshape into proper form
     covarM = covarM.reshape(L, L, n * s, n * s)
-    
+    assert all((np.linalg.eig(covarM[i, j])[0] >= 0).all()
+               for i in range(L) for j in range(L))
+
     # draw all the necessary samples
     rng = np.random.default_rng(seed=seed)
     samples = np.empty((L, L, S, n, s))
