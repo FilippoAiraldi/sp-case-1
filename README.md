@@ -42,8 +42,6 @@ A complete example would be
 python main.py --intvars --samples 10000 --alpha 0.95 --replicas 30 --lab_factors "[0.8, 0.9, 1.0, 1.1, 1.2]" --dep_factors "[0.1, 0.2, 0.3, 0.4, 0.5]" --seed 42 --verbose 0
 ```
 
-
-
 ---
 ## Authors
 Alban Kryeziu (a.kryeziu@rug.nl) and Filippo Airaldi (f.airaldi@tudelft.nl)
