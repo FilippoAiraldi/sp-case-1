@@ -87,11 +87,11 @@ if __name__ == '__main__':
     args = util.parse_args()
     constant_pars = util.get_parameters()
 
-    # run points
+    # run points on recourse modelling
     starttime = time.process_time()
     results = run_recourse(pars=constant_pars, args=args)
-    # ...run_chance...
-
-    # save results
     util.save_results(execution_time=time.process_time() - starttime,
                       args=args.__dict__, results=results)
+    
+    # ...run_chance...
+    # ...save results...

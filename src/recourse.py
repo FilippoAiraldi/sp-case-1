@@ -191,7 +191,7 @@ def add_2nd_stage_constraints(mdl: gb.Model,
                               vars_1st: Dict[str, np.ndarray],
                               vars_2nd: Dict[str, np.ndarray],
                               demands: np.ndarray = None
-                              ) -> Optional[gb.MVar]:
+                              ) -> Optional[np.ndarray]:
     '''
     Adds 2nd stage constraints with some deterministic values in place of 
     random demand variables to the model.
@@ -212,7 +212,7 @@ def add_2nd_stage_constraints(mdl: gb.Model,
 
     Returns
     -------
-    demands : np.ndarray of gurobipy.MVar
+    demands : np.ndarray of gurobipy.Var
         The new demand variables used in the constraints. Only created and 
         returned when no demand is passed in the arguments.
     '''
