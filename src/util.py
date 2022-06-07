@@ -33,8 +33,9 @@ def parse_args():
                              'analysis. Example: "[-0.2, -0.1, 0, 0.1, 0.2]".')
     parser.add_argument('--seed', type=int, default=None,
                         help='RNG seed.')
-    parser.add_argument('-v', '--verbose', type=int, default=0,
-                        choices=[0, 1, 2], help='Verbosity of Gurobi output')
+    parser.add_argument('-v', '--verbose', type=int, default=1,
+                        choices=[0, 1, 2, 3],
+                        help='Verbosity of Gurobi output')
     args = parser.parse_args()
 
     # do some checks

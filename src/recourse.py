@@ -267,7 +267,7 @@ def optimize_EV(
     '''
     # initialize model
     mdl = gb.Model(name='EV')
-    if verbose < 1:
+    if verbose < 2:
         mdl.Params.LogToConsole = 0
 
     # create the variables
@@ -334,7 +334,7 @@ def optimize_EEV(pars: Dict[str, np.ndarray],
     # create a starting model for the first scenario. Instead of instantiating
     # a new one, the following scenarios will use it again
     mdl = gb.Model(name='EEV')
-    if verbose < 2:
+    if verbose < 3:
         mdl.Params.LogToConsole = 0
 
     # create only 2nd variables, 1st stage variables are taken from the EV sol
@@ -352,7 +352,7 @@ def optimize_EEV(pars: Dict[str, np.ndarray],
     # solve each scenario
     results = []
     S = samples.shape[0]  # number of scenarios
-    for i in tqdm(range(S), total=S, desc='solving EEV'):
+    for i in tqdm(range(S), total=S, desc='solving EEV', disable=verbose == 0):
         # set demands to the i-th sample
         fix_var(mdl, demands, samples[i])
 
@@ -368,10 +368,11 @@ def optimize_EEV(pars: Dict[str, np.ndarray],
 def optimize_TS(pars: Dict[str, np.ndarray],
                 samples: np.ndarray,
                 intvars: bool = False,
-                verbose: int = 0) -> Tuple[float, Dict[str, np.ndarray]]:
+                verbose: int = 0
+                ) -> Tuple[float, Dict[str, np.ndarray], float]:
     '''
     Computes the approximated Two-stage Recourse Model, where the continuous 
-    distribution is discretazed via sampling.
+    distribution is discretized via sampling.
 
     Parameters
     ----------
@@ -400,7 +401,7 @@ def optimize_TS(pars: Dict[str, np.ndarray],
 
     # create large scale deterministic equivalent problem
     mdl = gb.Model(name='LSDE')
-    if verbose < 1:
+    if verbose < 2:
         mdl.Params.LogToConsole = 0
 
     # create 1st stage variables and 2nd stage variables, one per scenario
@@ -476,7 +477,7 @@ def run_MRP(pars: Dict[str, np.ndarray],
     n, s = pars['n'], pars['s']
     S = sample_size
     mdl = gb.Model(name='LSDE')
-    if verbose < 2:
+    if verbose < 3:
         mdl.Params.LogToConsole = 0
 
     # create 1st stage variables and 2nd stage variables, one per scenario
@@ -494,7 +495,7 @@ def run_MRP(pars: Dict[str, np.ndarray],
 
     # create also a submodel to solve only the second stage problem
     sub = gb.Model(name='sub')
-    if verbose < 2:
+    if verbose < 3:
         sub.Params.LogToConsole = 0
 
     # add 2nd stage variables and only X from 1st stage
@@ -510,7 +511,8 @@ def run_MRP(pars: Dict[str, np.ndarray],
 
     # start the MRP
     G = []
-    for r in tqdm(range(replicas), total=replicas, desc='MRP iteration'):
+    for r in tqdm(range(replicas), total=replicas, desc='MRP iteration',
+                  disable=verbose == 0):
         # draw a sample - cannot pass the same seed, otherwise the same samples
         # will be drawn again and the CI will be zero
         sample = util.draw_samples(S, pars, asint=intvars, seed=seed * (r + 1))
@@ -524,7 +526,8 @@ def run_MRP(pars: Dict[str, np.ndarray],
 
         # calculate G_k
         G_k = 0
-        for i in tqdm(range(S), total=S, desc='Computing G  ', leave=False):
+        for i in tqdm(range(S), total=S, desc='Computing G  ', leave=False,
+                      disable=verbose == 0):
             # solve v(w_k_s, x_hat)
             fix_var(sub, sub_demand, sample[i])
             fix_var(sub, sub_X, solution['X'])
@@ -576,7 +579,7 @@ def optimize_WS(pars: Dict[str, np.ndarray],
     '''
     # create the wait-and-see model
     mdl = gb.Model(name='LSDE')
-    if verbose < 1:
+    if verbose < 2:
         mdl.Params.LogToConsole = 0
 
     # create 1st and 2nd stage variables
@@ -595,7 +598,7 @@ def optimize_WS(pars: Dict[str, np.ndarray],
     # solve each scenario
     results = []
     S = samples.shape[0]  # number of scenarios
-    for i in tqdm(range(S), total=S, desc='solving WS'):
+    for i in tqdm(range(S), total=S, desc='solving WS', disable=verbose == 0):
         # set demands to the i-th sample
         fix_var(mdl, demands, samples[i])
 
@@ -662,7 +665,7 @@ def labor_sensitivity_analysis(
 
     # create large scale deterministic equivalent problem
     mdl = gb.Model(name='LSDE')
-    if verbose < 1:
+    if verbose < 2:
         mdl.Params.LogToConsole = 0
 
     # now, make a copy of the original paramters and replace the original UB
@@ -686,8 +689,8 @@ def labor_sensitivity_analysis(
 
     # solve TS for each modification combination
     results = {}
-    for i, j in tqdm(product(range(L), range(L)),
-                     total=L**2, desc='labor sensitivity'):
+    for i, j in tqdm(product(range(L), range(L)), total=L**2,
+                     desc='labor sensitivity', disable=verbose == 0):
         # fix UB and C2 to their modified counterpart
         fix_var(mdl, pars['UB'], UBs[i])
         fix_var(mdl, pars['C2'], C2s[j])
@@ -721,7 +724,7 @@ def labor_sensitivity_analysis(
     # p = Pool()
     # with p:
     #     for r in tqdm(p.imap(f, pars_modified), total=L**2,
-    #                   desc='sensivitiy analysis'):
+    #                   desc='sensivitiy analysis', disable=verbose == 0):
     #         results.append(r[0])
     # return np.array(results).reshape(L, L)
 
@@ -810,7 +813,7 @@ def dep_sensitivity_analysis(
 
     # create large scale deterministic equivalent problem
     mdl = gb.Model(name='LSDE')
-    if verbose < 1:
+    if verbose < 2:
         mdl.Params.LogToConsole = 0
 
     # create 1st stage variables and 2nd stage variables, one per scenario
@@ -828,8 +831,8 @@ def dep_sensitivity_analysis(
 
     # solve TS for each combination of crosscorrelation
     results = {}
-    for i, j in tqdm(product(range(L), range(L)),
-                     total=L**2, desc='demand sensitivity'):
+    for i, j in tqdm(product(range(L), range(L)), total=L**2,
+                     desc='demand sensitivity', disable=verbose == 0):
         # fix the demands to the current sample
         fix_var(mdl, demands, samples[i, j])
 

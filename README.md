@@ -35,7 +35,7 @@ to the script. They are the following
 - **-lf, --lab_factors**: a list of factors for the sensitivity analysis of labor. These factors modify two of the problem parameters, namely the labor extra capacity upper bound and associated cost. Assuming $N$ factors are specified, then the whole $N^2$ combinations of the two factors are generated, and for each a new TS solution is computed. The list of factors has to be specified as a string, and the default factors are "[.8, 1, 1.2]".
 - **-df, --dep_factors**: a list of factors for the sensitivity analysis of demand distributions dependency. In the original TS model, these ditributions are assumed to be independent between different products and at different time steps. To put this independence assumption to the test, these factors will be used to create multivariate normal distributions with some covariance between different products in the same period, and covariance of the same product at different periods. No correlation between different products in different periods is tested. Assuming $N$ factors are specified, then the whole $N^2$ combinations of the two factors are generated, and for each new samples are drawn and a new TS solution is computed. The list of factors has to be specified as a string, and the default factors are "[-0.1, 0, 0.1]".
 - **-s, --seed**: random number generator seed. By default, the seed is None.
-- **-v, --verbose**: verbosity level of the Gurobi solvers. It can be 0, 1 or 2, where 0 is the less verbose. By default, the verbosity level is 0.
+- **-v, --verbose**: verbosity level of the Gurobi solvers. It can be 0, 1, 2 or 3, where 0 is the less verbose. By default, the verbosity level is 1.
 
 A complete example would be
 ```bash
