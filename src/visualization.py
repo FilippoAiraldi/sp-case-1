@@ -13,82 +13,112 @@ from functools import partial
 colors = ['#0072BD', '#D95319', '#EDB120', '#7E2F8E', '#77AC30', '#A2142F']
 
 
-def fig1_computations(pars, EV_vars_C, EV_vars_I, samples):
+def fig1_computations(pars, EV_vars_C, EV_vars_I, sample_size):
+    samples = util.draw_samples(sample_size, pars)
     EEV_C = recourse.optimize_EEV(pars, EV_vars_C, samples)
     EEV_I = recourse.optimize_EEV(pars, EV_vars_I,
                                   samples.astype(int), intvars=True)
     return np.mean(EEV_C), np.mean(EEV_I)
 
 
-def fig1(args, pars):
+def fig1(pars):
     # solve EV for both continuos and integer variables
     EV_C, EV_vars_C, _ = recourse.optimize_EV(pars, intvars=False)
     EV_I, EV_vars_I, _ = recourse.optimize_EV(pars, intvars=True)
 
     # solve EEV for different sample sizes and for both continuos and integer
-    N = 500
-    sizes = np.logspace(1, 4, N).astype(int)
-    samples = [util.draw_samples(size, pars, seed=args.seed) for size in sizes]
-    EEV_C, EEV_I = [], []
-    p = Pool()
-    f = partial(fig1_computations, pars, EV_vars_C, EV_vars_I)
-    with p:
-        for results in tqdm(p.imap(f, samples), total=N, desc='Figure 1'):
-            EEV_C.append(results[0])
-            EEV_I.append(results[1])
+    N = 20  # number of repetitions per size
+    S = 50  # number of sizes to try out
+    sizes = np.unique(np.logspace(1, 4, S, dtype=int))
+    S = sizes.size
+    EEV_C, EEV_I = np.empty((S, N)), np.empty((S, N))
 
-    # convert to arrays
-    EEV_C, EEV_I = np.array(EEV_C), np.array(EEV_I)
+    # run parallel computations
+    f = partial(fig1_computations, pars, EV_vars_C, EV_vars_I)
+    p = Pool()
+    with p:
+        for i, results in tqdm(enumerate(p.imap(f, np.tile(sizes, N))),
+                               total=S * N, desc='Figure 1'):
+            n, s = i // S, i % S
+            EEV_C[s, n], EEV_I[s, n] = results
 
     # plot EEV-EV gaps
-    _, ax = plt.subplots(figsize=(7, 2), constrained_layout=True)
-    ax.semilogx(sizes, EEV_C - EV_C, label='continuous',
-                color=colors[0], linewidth=1, zorder=3)
-    ax.semilogx(sizes, EEV_I - EV_I, label='integer',
-                color=colors[1], linewidth=1, zorder=2)
+    fig, ax = plt.subplots(figsize=(7, 2), constrained_layout=True)
+    gap_mean = (EEV_C - EV_C).mean(1)
+    gap_std = (EEV_C - EV_C).std(1)
+    ax.semilogx(sizes, gap_mean, label='continuous',
+                color=colors[0], linewidth=1, zorder=4)
+    ax.fill_between(sizes, gap_mean + gap_std, gap_mean - gap_std,
+                    color=colors[0], alpha=0.2, linewidth=0, zorder=2)
+
+    gap_mean = (EEV_I - EV_I).mean(1)
+    gap_std = (EEV_C - EV_C).std(1)
+    ax.semilogx(sizes, gap_mean, label='integer',
+                color=colors[1], linewidth=1, zorder=3)
+    ax.fill_between(sizes, gap_mean + gap_std, gap_mean - gap_std,
+                    color=colors[1], alpha=0.2, linewidth=0, zorder=1)
 
     # make it nicer
     ax.set_xlabel('Sample Size')
     ax.set_ylabel('EEV $-$ EV')
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
-    ax.tick_params(direction='in')
-    ax.legend(loc='lower right', frameon=False)
+    ax.tick_params(which='both', direction='in')
+    ax.legend(frameon=False)
+    fig.savefig('fig1.png', format='png', dpi=300)
 
 
-def fig2_computations(pars, samples):
+def fig2_computations(pars, sample_size):
+    samples = util.draw_samples(sample_size, pars)
     TS_C, _, prob_C = recourse.optimize_TS(pars, samples)
     TS_I, _, prob_I = recourse.optimize_TS(pars, samples.astype(int),
                                            intvars=True)
     return TS_C, prob_C, TS_I, prob_I
 
 
-def fig2(args, pars):
+def fig2(pars):
     # solve TS for different sample sizes and for both continuos and integer
-    N = 100
-    sizes = np.logspace(1, 4, N).astype(int)
-    samples = [util.draw_samples(size, pars, seed=args.seed) for size in sizes]
-    TS_C, TS_I, prob_C, prob_I = [], [], [], []
-    p = Pool()
-    f = partial(fig2_computations, pars)
-    with p:
-        for results in tqdm(p.imap(f, samples), total=N, desc='Figure 2'):
-            TS_C.append(results[0])
-            prob_C.append(results[1] * 100)
-            TS_I.append(results[2])
-            prob_I.append(results[3] * 100)
+    N = 20  # number of repetitions per size
+    S = 50  # number of sizes to try out
+    sizes = np.logspace(1, 4, S).astype(int)
+    TS_C, prob_C = np.empty((S, N)), np.empty((S, N))
+    TS_I, prob_I = np.empty((S, N)), np.empty((S, N))
 
-    # plot EEV-EV gaps
-    fig, axs = plt.subplots(2, 1, figsize=(7, 4), sharex=True,
-                            constrained_layout=True)
-    axs[0].semilogx(sizes, TS_C, label='continuous',
-                    color=colors[0], linewidth=1, zorder=3)
-    axs[0].semilogx(sizes, TS_I, label='integer',
-                    color=colors[1], linewidth=1, zorder=2)
-    axs[1].semilogx(sizes, prob_C, label='continuous',
-                    color=colors[0], linewidth=1, zorder=3)
-    axs[1].semilogx(sizes, prob_I, label='integer',
-                    color=colors[1], linewidth=1, zorder=2)
+    # run parallel computations
+    f = partial(fig2_computations, pars)
+    p = Pool()
+    with p:
+        for i, results in tqdm(enumerate(p.imap(f, np.tile(sizes, N))),
+                               total=S * N, desc='Figure 2'):
+            n, s = i // S, i % S
+            TS_C[s, n], prob_C[s, n], TS_I[s, n], prob_I[s, n] = results
+
+    # plot TS objs
+    fig, axs = plt.subplots(2, 1, figsize=(7, 4), sharex=True)
+    TS_mean, TS_std = TS_C.mean(1), TS_C.std(1)
+    axs[0].semilogx(sizes, TS_mean, label='continuous',
+                    color=colors[0], linewidth=1, zorder=4)
+    axs[0].fill_between(sizes, TS_mean + TS_std, TS_mean - TS_std,
+                        color=colors[0], alpha=0.2, linewidth=0, zorder=2)
+
+    TS_mean, TS_std = TS_I.mean(1), TS_I.std(1)
+    axs[0].semilogx(sizes, TS_mean, label='integer',
+                    color=colors[1], linewidth=1, zorder=3)
+    axs[0].fill_between(sizes, TS_mean + TS_std, TS_mean - TS_std,
+                        color=colors[1], alpha=0.2, linewidth=0, zorder=1)
+
+    # plot purchase probs
+    prob_mean, prob_std = prob_C.mean(1), prob_C.std(1)
+    axs[1].semilogx(sizes, prob_mean, label='continuous',
+                    color=colors[0], linewidth=1, zorder=4)
+    axs[1].fill_between(sizes, prob_mean + prob_std, prob_mean - prob_std,
+                        color=colors[0], alpha=0.2, linewidth=0, zorder=2)
+
+    prob_mean, prob_std = prob_I.mean(1) * 100, prob_I.std(1) * 100
+    axs[1].semilogx(sizes, prob_mean, label='integer',
+                    color=colors[1], linewidth=1, zorder=3)
+    axs[1].fill_between(sizes, prob_mean + prob_std, prob_mean - prob_std,
+                        color=colors[1], alpha=0.2, linewidth=0, zorder=1)
 
     # make it nicer
     axs[1].set_xlabel('Sample Size')
@@ -98,11 +128,12 @@ def fig2(args, pars):
     axs[1].spines['top'].set_visible(False)
     axs[0].spines['right'].set_visible(False)
     axs[1].spines['right'].set_visible(False)
-    axs[0].tick_params(direction='in')
-    axs[1].tick_params(direction='in')
+    axs[0].tick_params(which='both', direction='in')
+    axs[1].tick_params(which='both', direction='in')
     axs[1].yaxis.set_major_formatter(PercentFormatter())
-    axs[0].legend(loc='lower right', frameon=False)
+    axs[0].legend(frameon=False, loc='lower right')
     fig.subplots_adjust(hspace=0.4)
+    fig.savefig('fig2.png', format='png', dpi=300)
 
 
 if __name__ == '__main__':
@@ -114,12 +145,10 @@ if __name__ == '__main__':
     #             with open(os.path.join(root, file), 'rb') as f:
     #                 data[file] = pickle.load(f)
 
-    # parse arguments and get constant parameters
-    args = util.parse_args()
-    args.verbose = 0
+    # get constant parameters
     pars = util.get_parameters()
 
     # do plotting
-    # fig1(args, pars)
-    # fig2(args, pars)
+    fig1(pars)  # ~ 3min
+    fig2(pars)  # > 1h
     plt.show()
