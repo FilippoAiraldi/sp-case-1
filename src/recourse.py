@@ -515,7 +515,8 @@ def run_MRP(pars: Dict[str, np.ndarray],
                   disable=verbose == 0):
         # draw a sample - cannot pass the same seed, otherwise the same samples
         # will be drawn again and the CI will be zero
-        sample = util.draw_samples(S, pars, asint=intvars, seed=seed * (r + 1))
+        seed_ = seed * (r + 1) if seed is not None and seed != 0 else None
+        sample = util.draw_samples(S, pars, asint=intvars, seed=seed_)
 
         # fix the problem's demands to this sample
         fix_var(mdl, demands, sample)
