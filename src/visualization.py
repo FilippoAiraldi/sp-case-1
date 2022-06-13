@@ -3,9 +3,10 @@ import pickle
 import numpy as np
 import util
 import recourse
+from itertools import product
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from matplotlib.ticker import PercentFormatter
+from matplotlib.ticker import PercentFormatter, StrMethodFormatter
 from multiprocessing import Pool
 from functools import partial
 
@@ -136,19 +137,74 @@ def fig2(pars):
     fig.savefig('fig2.png', format='png', dpi=300)
 
 
-if __name__ == '__main__':
-    # # load all pickle files, for both continuous and integer
-    # data = {}
-    # for root, _, files in os.walk('results\\recourse'):
-    #     for file in files:
-    #         if file.endswith('.pkl'):
-    #             with open(os.path.join(root, file), 'rb') as f:
-    #                 data[file] = pickle.load(f)
+def fig3():
+    # load data for both continuous and integer
+    data = {'labor': {}, 'demand': {}}
+    for t in ('C', 'I'):
+        # load from pickle
+        fn = os.path.join('results', 'recourse', f'Samples_10000_Type_{t}.pkl')
+        with open(fn, 'rb') as f:
+            pkl = pickle.load(f)
 
+        # convert sensitivity to array, normalize and save to dict
+        for name in ('labor', 'demand'):
+            f = np.array(pkl['args'][f'{name[:3]}_factors'])
+            S = np.array(list(pkl['results'][f'{name} sensitivity'].values()))
+            S = S.reshape(f.size, f.size)
+            data[name][t] = (f, S)
+
+    # for labor - 1st factor (row, y) is extra labor upper bound and
+    # 2nd factor (column, x) is extra labor cost
+    # for demands - 1st factor (row, y) is inter-product correlation and
+    # 2nd factor (column, x) is inter-period correlation
+    baseline = (1, 0)
+    labels = [('$up_{3t}$ factor', '$c^2_{3t}$ factor'),
+              ('inter-product factor', 'inter-period factor')]
+    titles = [('labor parameters\nsensitivity'),
+              ('demand dependence\nsensitivity')]
+
+    # create figures for labor and demand sensitivities
+    fig, axs = plt.subplots(1, 2, figsize=(11, 5))
+
+    # plot labour and demand sensitivity matrices
+    for i, (vals, ax) in enumerate(zip(data.values(), axs)):
+        f, S = vals['C']
+        im = ax.imshow(S)
+        ax.set_xticks(np.arange(f.size), labels=f)
+        ax.set_yticks(np.arange(f.size), labels=f)
+
+        # make it nicer
+        ax.set_ylabel(labels[i][0], fontsize=15)
+        ax.set_title(labels[i][1], fontsize=15)  # x label
+        ax.tick_params(top=True, bottom=False,
+                       labeltop=True, labelbottom=False)
+        ax.set_xlabel(titles[i], labelpad=17, fontsize=16)  # title
+        ax.tick_params(axis='both', which='major', labelsize=14)
+
+        # add colorbar and adjust layout
+        cb = fig.colorbar(im, ax=ax)
+        cb.ax.tick_params(labelsize=14)
+        fig.subplots_adjust(wspace=0.5)
+
+        # add percentage text
+        b = np.where(f == baseline[i])[0]
+        Snorm = ((S - S[b[0], b[0]]) / S[b[0], b[0]] * 100
+                 if b.size == 1 else
+                 S)
+        for i, j in product(range(S.shape[0]), range(S.shape[1])):
+            ax.text(j, i, f'{Snorm[i, j]:+1.1f}%', color='white', fontsize=13,
+                    horizontalalignment='center', verticalalignment='center')
+
+    # save figure
+    # fig.savefig('fig3.eps', format='eps', dpi=300)
+
+
+if __name__ == '__main__':
     # get constant parameters
     pars = util.get_parameters()
 
     # do plotting
-    fig1(pars)  # ~ 3min
-    fig2(pars)  # > 1h
+    # fig1(pars)  # ~ 3min
+    # fig2(pars)  # > 1h
+    fig3()  # seconds
     plt.show()
