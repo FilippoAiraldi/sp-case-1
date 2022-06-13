@@ -29,10 +29,10 @@ def run_recourse(pars: Dict[str, np.ndarray], args) -> Dict[str, Any]:
 
     # compute TS
     util.print_title('Two-stage Model')
-    TS_obj, TS_vars1, purchase_prob = recourse.optimize_TS(
+    TS_obj, TS_vars1, TS_vars2_avg, purchase_prob = recourse.optimize_TS(
         pars, samples, intvars=args.intvars, verbose=args.verbose)
     print(f'TS = {TS_obj:.3f} / purchase prob = {purchase_prob}')
-    for var, value in TS_vars1.items():
+    for var, value in (TS_vars1 | TS_vars2_avg).items():
         print(f'{var} = \n', value)
 
     # assess TS quality via MRP
@@ -61,7 +61,7 @@ def run_recourse(pars: Dict[str, np.ndarray], args) -> Dict[str, Any]:
         pars, samples, args.lab_factors, intvars=args.intvars,
         verbose=args.verbose)
     print(f'labour sensitivity =\n{labor_sens_mtx}')
-    dp_sens, dp_sens_mtx = recourse.dep_sensitivity_analysis(
+    dp_sens, dp_sens_mtx = recourse.dem_sensitivity_analysis(
         pars, args.samples, args.dem_factors, intvars=args.intvars,
         verbose=args.verbose, seed=args.seed)
     print(f'demand sensitivity =\n{dp_sens_mtx}')
@@ -70,7 +70,7 @@ def run_recourse(pars: Dict[str, np.ndarray], args) -> Dict[str, Any]:
     return {
         'EV': {'obj': EV_obj, 'sol': EV_vars1 | EV_vars2},
         'EEV': EEV_obj,
-        'TS': {'obj': TS_obj, 'sol': TS_vars1},
+        'TS': {'obj': TS_obj, 'sol': TS_vars1 | TS_vars2_avg},
         'MRP_CI': CI,
         'WS': WS_obj,
         'VSS': VSS,
@@ -92,6 +92,6 @@ if __name__ == '__main__':
     results = run_recourse(pars=constant_pars, args=args)
     util.save_results(execution_time=time.process_time() - starttime,
                       args=args.__dict__, results=results)
-    
+
     # ...run_chance...
     # ...save results...

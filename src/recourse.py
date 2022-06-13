@@ -365,11 +365,12 @@ def optimize_EEV(pars: Dict[str, np.ndarray],
     return results
 
 
-def optimize_TS(pars: Dict[str, np.ndarray],
-                samples: np.ndarray,
-                intvars: bool = False,
-                verbose: int = 0
-                ) -> Tuple[float, Dict[str, np.ndarray], float]:
+def optimize_TS(
+    pars: Dict[str, np.ndarray],
+    samples: np.ndarray,
+    intvars: bool = False,
+    verbose: int = 0
+) -> Tuple[float, Dict[str, np.ndarray], Dict[str, np.ndarray], float]:
     '''
     Computes the approximated Two-stage Recourse Model, where the continuous 
     distribution is discretized via sampling.
@@ -390,8 +391,11 @@ def optimize_TS(pars: Dict[str, np.ndarray],
     -------
     obj : float
         Value of the objective function at the optimal point.
-    solution : dict[str, np.ndarray]
+    solution1 : dict[str, np.ndarray]
         Dictionary containing the value of 1st stage variable at the optimum.
+    solution2_avg : dict[str, np.ndarray]
+        Dictionary containing the value of 2st stage variable at the optimum, 
+        averaged over all scenarios.
     purchase_prob : float
         The probability, according to the TS solution and the sample, that a 
         purchase from an external source must be done.
@@ -427,13 +431,14 @@ def optimize_TS(pars: Dict[str, np.ndarray],
                (lambda o: util.var2val(o)))
     sol1 = {name: convert(var) for name, var in vars1.items()}
     sol2 = {name: convert(var) for name, var in vars2.items()}
+    sol2_avg = {f'{name} avg': var.mean(0) for name, var in sol2.items()}
 
     # compute the purchase probability
     purchase_prob = (sol2['Y+'] > 0).sum() / sol2['Y+'].size
 
     # return
     mdl.dispose()
-    return objval, sol1, purchase_prob
+    return objval, sol1, sol2_avg, purchase_prob
 
 
 def run_MRP(pars: Dict[str, np.ndarray],
@@ -730,7 +735,7 @@ def labor_sensitivity_analysis(
     # return np.array(results).reshape(L, L)
 
 
-def dep_sensitivity_analysis(
+def dem_sensitivity_analysis(
         pars: Dict[str, np.ndarray],
         samplesize: int,
         factors: List[float],
