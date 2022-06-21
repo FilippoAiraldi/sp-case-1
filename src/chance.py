@@ -12,6 +12,7 @@ import numpy as np
 from scipy.optimize import line_search
 from scipy.stats import norm
 from scipy.stats.distributions import truncnorm
+from scipy.optimize import minimize
 from scipy.linalg import block_diag
 from math import *
 from scipy.stats import qmc
@@ -24,30 +25,9 @@ from typing import Union, Dict, Tuple, List, Optional
 #set the model
 cc=gb.Model('ChanceConstraints')
 
-#set parameters and decision variables
-s=4 #periods
-n=2 #products
-m=3 #production sources
 
-demand_mean= np.array([[30, 32, 44, 48],
-                       [50, 50, 50, 60]])*10
-demand_std=np.tile(np.array([[45], [75]]), (1, s)) #demand standard deviation
-
-#print(np.asarray(demand_mean).flatten().size) convert to array and size for sampling
-A=np.array([[4, 3, 3],
-            [5, 2, 7]])  # unit source j needed for product i
-
-#upper bound on extra capacity of source j at time t
-UB=np.array([[40, 40, 40, 35],
-                        [30, 30, 25, 35],
-                        [45, 45, 37.5, 35]]) * 10 
-
-C1 = np.tile(np.array([[100], [150]]), (1, 4))
-C2 = np.tile(np.array([[15], [20], [10]]), (1, 4))
-C3 = np.array([20,20,20]) #Increase work force level
-C4 = np.array([15,15,15])   # decrease worke force level
-Q_p= np.tile(np.array([[400], [450]]), (1, 4)) # unit cost for shortage
-Q_m= np.matrix('25 25 25 100; 30 30 30 150')  #unit cost for suprlus
+#Get parameters from util
+pars=util.get_parameters()
 
 N_blo=np.array([[1,0,0,0],
             [1,1,0,0],
@@ -154,6 +134,142 @@ def fix_var(mdl: gb.Model, var: np.ndarray, value: np.ndarray) -> None:
 
 
 
+def add_1st_stage_constraints(mdl: gb.Model,
+                              pars: Dict[str, np.ndarray],
+                              vars: Dict[str, np.ndarray]) -> None:
+    '''
+    Adds 1st stage constraints to the model.
+    Parameters
+    ----------
+    mdl : gurobipy
+        Model to add constraints to.
+    pars : dict[str, np.ndarray]
+        Dictionary containing the optimization problem parameters.
+    vars : dict[str, np.ndarray]
+        Dictionary containing the optimization variables.
+    '''
+    X, U, Zp, Zm = vars['X'], vars['U'], vars['Z+'], vars['Z-']
+
+    # sufficient sources to produce necessary products
+    A, B = pars['A'], pars['B']
+    con = (A.T @ X - B - U).flatten()
+    mdl.addConstrs((con[i] <= 0 for i in range(con.size)), name='con_product')
+
+    # work force level increase/decrease
+    con = Zp - Zm - A[:, -1] @ (X[:, 1:] - X[:, :-1])
+    mdl.addConstrs((con[i] == 0 for i in range(con.size)), name='con_work')
+
+    # extra capacity upper bounds
+    UB = pars['UB']
+    con = (U - UB).flatten()
+    mdl.addConstrs((con[i] <= 0 for i in range(con.size)), name='con_extracap')
+def add_2nd_stage_constraints(mdl: gb.Model,
+                              pars: Dict[str, np.ndarray],
+                              vars_1st: Dict[str, np.ndarray],
+                              vars_2nd: Dict[str, np.ndarray],
+                              demands: np.ndarray = None
+                              ) -> Optional[np.ndarray]:
+    '''
+    Adds 2nd stage constraints with some deterministic values in place of 
+    random demand variables to the model.
+    Parameters
+    ----------
+    mdl : gurobipy.Model
+        Model to add constraints to.
+    pars : dict[str, np.ndarray]
+        Dictionary containing the optimization problem parameters.
+    vars_1st : dict[str, np.ndarray]
+        Dictionary containing the 1st stage optimization variables.
+    vars_2nd : dict[str, np.ndarray]
+        Dictionary containing the 2nd stage optimization variables.
+    demands : np.ndarray, optional
+        Deterministic demand values. If None, new variables are added to the 
+        model and returned.
+    Returns
+    -------
+    demands : np.ndarray of gurobipy.Var
+        The new demand variables used in the constraints. Only created and 
+        returned when no demand is passed in the arguments.
+    '''
+    # get the number of scenarios (if 2D, then 1; if 3D, then first dimension)
+    S = 1 if vars_2nd['Y+'].ndim == 2 else vars_2nd['Y+'].shape[0]
+
+    s, n = pars['s'], pars['n']
+    X, Yp, Ym = vars_1st['X'], vars_2nd['Y+'], vars_2nd['Y-']
+
+    if demands is None:
+        return_ = True
+        size = (n, s) if S == 1 else (S, n, s)
+        demands = np.array(
+            mdl.addVars(*size, lb=0, ub=0, name='demand').values()
+        ).reshape(size)
+    else:
+        return_ = False
+
+    # in the first period, zero surplus is assumed
+    Ym = np.concatenate((np.zeros((*Ym.shape[:-1], 1)), Ym), axis=-1)
+    con = (X + Yp  - demands).flatten()
+    mdl.addConstrs((con[i] >= 0 for i in range(con.size)), name='con_demand')
+
+    if return_:
+        return demands
+
+'''
+def add_constraint(mdl: gb.Model,
+                              pars: Dict[str, np.ndarray],
+                              vars_1st: Dict[str, np.ndarray],
+                              vars_2nd: Dict[str, np.ndarray],
+                              demands: np.ndarray = None
+                              ) -> Optional[np.ndarray]:
+  
+    ----------
+    mdl : gurobipy.Model
+        Model to add constraints to.
+    pars : dict[str, np.ndarray]
+        Dictionary containing the optimization problem parameters.
+    vars_1st : dict[str, np.ndarray]
+        Dictionary containing the 1st stage optimization variables.
+    vars_2nd : dict[str, np.ndarray]
+        Dictionary containing the 2nd stage optimization variables.
+    demands : np.ndarray, optional
+        Deterministic demand values. If None, new variables are added to the 
+        model and returned.
+    Returns
+    -------
+    demands : np.ndarray of gurobipy.Var
+        The new demand variables used in the constraints. Only created and 
+        returned when no demand is passed in the arguments.
+
+    # get the number of scenarios (if 2D, then 1; if 3D, then first dimension)
+    S = 1 if vars_2nd['Y+'].ndim == 2 else vars_2nd['Y+'].shape[0]
+
+    s, n = pars['s'], pars['n']
+    Mi=1000 
+    X, Yp, Ym = vars_1st['X'], vars_2nd['Y+'], vars_2nd['Y-']
+    
+    #Transform demands and Ym
+    Ym=np.matmul(N_block,Ym) #transform YM
+    demand=np.matmul(N_block,demand) #Transform 
+
+    if demands is None:
+        return_ = True
+        size = (n, s) if S == 1 else (S, n, s)
+        demands = np.array(
+            mdl.addVars(*size, lb=0, ub=0, name='demand').values()
+        ).reshape(size)
+    else:
+        return_ = False
+
+    # in the first period, zero surplus is assumed
+    Ym = np.concatenate((np.zeros((*Ym.shape[:-1], 1)), Ym), axis=-1)
+    delta=np.where(Ym-demands>=0,0,1) #indicator function
+    con = (Ym[...,1]  +Mi*delta[]- demands[:,0]).flatten()
+    mdl.addConstrs((con[i] >= 0 for i in range(con.size)), name='con_demand')
+
+    if return_:
+        return demands
+''' 
+
 #function to compute the Cumulative normal distribution
 def phi(x):
     #'Cumulative distribution function for the standard normal distribution'
@@ -174,65 +290,62 @@ def normpdf(x, mean, sd):
     
 
 #function to compute the solution for the LP  (11) in report
-alpha=0.5 # we use 0.5,0.6,0.9,1.0
+alph=0.5 # we use 0.5,0.6,0.9,1.0
 lp1=gb.Model('interior point') # Convex Lp in (11) that finds interior point Y^{-}
 
 #decison variables (same as for the recourse)
-vars1=add_1st_stage_variables(lp1, pars, intvars=intvars)
-vars2 = add_2nd_stage_variables(lp1, pars, intvars=intvars)
+vars1=add_1st_stage_variables(lp1, pars, intvars=False)
+vars2=add_2nd_stage_variables(lp1, pars)
 
 
 #objective function \alpha
-lp1.setObjective(alpha,GRB.MAXIMIZE)
+lp1.setObjective(alph,GRB.MAXIMIZE)
 
 #Constraints
-add_1st_stage_constraints(lp1, pars, vars1) # deterministic constraint
 
-#Constraint T\Lambda -Y^-\geq 0 is by using second stage constarints modify
+ # deterministic constraint
+add_1st_stage_constraints(lp1, pars, vars1)
 
-    S = 1 if vars_2nd['Y+'].ndim == 2 else vars_2nd['Y+'].shape[0]
+#Constraint T\Lambda -Y^-\geq 0 is by using modifyed second stage constraints 
+add_2nd_stage_constraints(lp1, pars, vars1, vars2)  
 
-    s, n = pars['s'], pars['n']
-    X, Yp, Ym = vars_1st['X'], vars_2nd['Y+'], vars_2nd['Y-']
 
-    if demands is None:
-        return_ = True
-        size = (n, s) if S == 1 else (S, n, s)
-        demands = np.array(
-            mdl.addVars(*size, lb=0, ub=0, name='demand').values()
-        ).reshape(size)
-    else:
-        return_ = False
-
-    # in the first period, zero surplus is assumed
-    Ym = np.concatenate((np.zeros((*Ym.shape[:-1], 1)), Ym), axis=-1)
-    con = (X + Yp  - demands).flatten()    #modified
-    mdl.addConstrs((con[i] >= 0 for i in range(con.size)), name='con_demand')
-    if return_:
-        return demands
- #Constraint Y^{-}+M_i \delta \geq omega
+#Constraint Y^{-}+M_i \delta \geq omega
  
+#add_constraint(lp1,pars,vars1,vars2)
+
+
+#Constraint \sum_{i}p_i\delta^{j}\leq 1-alph
+
 
 
 #run model
 lp1.optimize()
 
 #save values and use the solution Y^{-} for the line search
-
-
-
-#Function to add feasible cuts ----TODO
-
-
-
-#set Convergence criteria and start the while loop for algorithm ---TODO
-
+objval = lp1.ObjVal
+convert = ((lambda o: util.var2val(o)))
+sol1 = {name: convert(var) for name, var in vars1.items()}
+sol2 = {name: convert(var) for name, var in vars2.items()}
+sol2_avg = {f'{name} avg': var.mean(0) for name, var in sol2.items()}
 
 
 
 
 
-#Function to add feasible cuts ---TODO
+#line search using sol2['Y-']
+
+
+
+
+
+
+
+
+
+
+
+#Function to add feasible cuts TODO
 
 
 
