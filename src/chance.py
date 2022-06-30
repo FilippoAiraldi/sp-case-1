@@ -2,7 +2,7 @@
 """
 Created on Wed Jun 22 10:08:28 2022
 
-
+@author: Alban
 """
 
 import gurobipy as gb
@@ -10,11 +10,14 @@ from gurobipy import GRB
 import numpy as np
 import scipy
 import util
+import math
+from math import *
+from pyDOE import *
 import recourse
 from itertools import product
 from typing import Union, Dict, Tuple, List, Optional
 from scipy.stats import multivariate_normal as mvn
-
+from scipy.optimize import linprog
 def draw_new_samples(args, pars):
     n, s = pars['n'], pars['s']
     p = (n * s) // 2
@@ -200,33 +203,65 @@ def normpdf(x, mean, sd):
     denom = (2*math.pi*var)**.5
     num = math.exp(-(float(x)-float(mean))**2/(2*var))
     return num/denom
-"""
-def multi_gradient(Y):
-    
-    
-    function that computes the gradient of \alpha -F(Y) 
-    where F is the cumulative distribution function for a rv that has normal distribution
-    the formula used is \partial F/zi
 
+
+def multi_gradient(samples,Y):
+    
+    '''
+    function that computes the gradient of \alpha -F(Y) 
     Parameters
     ----------
-
     Y : TYPE     numpy.array or pars['Y'] as explained in util
         DESCRIPTION. you insert an array Y of shape (1,8) 
-
-
     Returns
+    Samples: from util
     -------
     None.
-
     
-    partial_F=np.zeros((1,8))
-    for i in range(9):
-        partial_F[i]=cdf() *normpdf(Y[i],demands[1],std)
-       I do have a function for the cdf using multivariate as mvn but dont know how to use it here
-       cdf()=mvn.(mean=mean, cov=covariance)dist(np.array[ the array we want to compute]
+    '''
+    demands, demand_mean, demand_cov = samples
+    #partial_F=np.zeros((1,8))
+    partial_F=[]
+    #std=np.sqrt(np.diag(demand_cov))
+    std=np.linalg.det(demand_cov) ** 8
+    index=[0,1,2,3,4,5,6,7]
+    for i, j in product(range(7),range(7)):
+        #Compute the CDF given in equation (17)
+        demand_mean=demand_mean+1/std*(Y[i]-demand_mean[i])*demand_cov[:,i]
+        demand_mean=np.delete(demand_mean,index[i])
+        demand_cov =np.delete(np.delete(demand_cov -1/std *np.matmul(demand_cov[:i].T,demand_cov[:i]),(i),axis=0),(i),axis=1)
+        #small note here is that the demand[1] is just to test if it works otherwise its std but for some reasons it was an overflow error (std=0 appearantly)
+        partial_F =normpdf(Y[j],demand_mean[j],demand_mean[1]) *mvn(mean=demand_mean, cov=demand_cov).cdf(np.array[Y].delete(index[j])) #
         
-    return np.concatenate(partial_F[i]))
+    return np.array(list(partial_F))
+"""
+def multi_gradient(samples,Y):
+    
+    '''
+    function that computes the gradient of \alpha -F(Y) 
+    Parameters
+    ----------
+    Y : TYPE     numpy.array or pars['Y'] as explained in util
+        DESCRIPTION. you insert an array Y of shape (1,8) 
+    Returns
+    Samples: from util
+    -------
+    None.
+    
+    '''
+    demands, demand_mean, demand_cov = samples
+    #partial_F=np.zeros((1,8))
+    partial_F=[]
+    std=np.sqrt(np.diag(demand_cov))
+    index=[0,1,2,3,4,5,6,7]
+    for i, j in product(range(8),range(8)):
+        #Compute the CDF given in equation (17)
+        neew_mean=new_mean+1/std*(Y[i]-new_mean[i])*new_cov[:,i]
+        it_mean=np.delete(new_mean,index[i])
+        new_cov =np.delete(np.delete(new_cov -1/std *np.matmul(new_cov[:i],new_cov[:i].T),(i),axis=0),(i),axis=1)
+        partial_F =mvn(mean=new_mean, cov=new_cov).cdf(np.array[Y].delete(index[j])) *normpdf(Y[j],new_mean[j],std) #
+        
+    return np.array(list(partial_F))
 """
 
 # this stuff should be in the main.py
@@ -234,51 +269,35 @@ np.set_printoptions(precision=3, suppress=False)
 args = util.parse_args()
 pars = util.get_parameters()
 demands = draw_new_samples(args, pars)
-run_LP_11(demands, pars)
-run_LP_11_K(demands,pars)
+ob1,sol1,Y_bar,delta= run_LP_11(demands, pars)
+ob2,sol1_K,Y_0,delta_k= run_LP_11_K(demands,pars)
 
-
+#Y=Y_bar['Y-'].reshape(-1)
+#print(g=multi_gradient(demands,Y))
 #use solution of the above LP as the interior point for starting the line search and iteration
+"""
 Y_bar=sol2['Y'] #interior point from solution of LP_11
 Y_0=sol2['Y']   #boundary point from solution of LP_11_K
-"""
+test the value of F(Y_0)<0.5 (it should be) error I get is:
+    array 'mean' must be a vector of lenght 8
+mvn(mean=new_mean, cov=new_cov).cdf(np.array[Y_0]) 
+
 #Iterate for adding cuts 
+"""
 maxiter=20
 for it in range(maxiter):
-    Y_bar=sol2['Y']
-    Y_0=sol2['Y'] 
-    solve(max(tau-alpha-F(lambda Y-+(1-lambda )Y )))
-    Yk=lambda Y-+(1-lambda )Y #boundary point
-    #add cuts 
-    - \nabla F(Yk)*Y\leq -\nabla  F(Y-)
-    
-    
-"""
-    
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    ob1,sol1,Y_ba,delta= run_LP_11(demands, pars)
+    ob2,sol1_K,Y_0,delta_k= run_LP_11_K(demands,pars)
+    Y_bar=Y_bar['Y-'].reshape(-1)
+    Y_0=Y_0['Y-'].reshape(-1)
+    if multi_gradient(samples, Y_bar)*multi_gradient(samples, Y_0)>=0:
+        break
+    print("bisection failed one of them is the solution")
+    while multi_gradient(samples, Y_bar)*multi_gradient(samples, Y_0)<0:
+        Y_0=0.5Y_0+0.5*Y_bar #bisection
+        #add cuts and solve the linear programm LP_11_K for the smaller feasible set
+        
+        
+    print('Maximal iteration', it)
+    #print('Optimal objective value', LP_11_K('obj'),'\nY_bar', sol2[Y-],...)
+     
